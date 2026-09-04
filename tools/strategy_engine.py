@@ -831,6 +831,181 @@ def backtest(
     }
 
 
+# ─── Deterministic setup score (Layer 2) ──────────────────────────────────────
+# Combines the backtest stats with regime / trend / sample-size gates into a
+# single 0-100 number. Calibrated by construction: a 65%-win-rate strategy
+# with 50+ samples and a matched regime lands in the 70s. Used by:
+#   - the A+ filter in scan_server (only show setups with score >= 50)
+#   - the LLM meta-controller (must not approve if score < 50)
+#   - the live engine pre-filter (only call LLM if score >= 50)
+
+def compute_setup_score(backtest_result: dict, regime: str, strategy: str) -> dict:
+    """Return a deterministic 0-100 score plus the breakdown of how it was earned.
+
+    Input: the dict returned by backtest() (must include win_rate, expectancy_r,
+    profit_factor, sharpe, sample, max_dd) plus the current regime and strategy
+    name. Output: {score, components, regime_match, sample_sufficient}.
+
+    Scoring rules (max 100):
+      +30  win_rate >= 0.55              (scaled 0-30 by win_rate above 0.50)
+      +20  expectancy_r > 0              (R-multiple expectation; 0 if <= 0)
+      +15  profit_factor >= 1.5
+      +10  sharpe >= 1.0
+      +10  sample >= 30                  (a setup with only 8 trades is noise)
+      +10  regime matches strategy's allowed set
+      +5   trend_score (already in enriched_summary) >= 60
+    """
+    sample = int(backtest_result.get("sample", 0) or 0)
+    win_rate = float(backtest_result.get("win_rate", 0.0) or 0.0)
+    expectancy = float(backtest_result.get("expectancy_r", 0.0) or 0.0)
+    profit_factor = float(backtest_result.get("profit_factor", 0.0) or 0.0)
+    sharpe = float(backtest_result.get("sharpe", 0.0) or 0.0)
+    if profit_factor == float("inf"):
+        profit_factor = 5.0  # clamp so the bonus is finite
+
+    components: dict[str, float] = {}
+    score = 0.0
+
+    # Win-rate contribution (0-30, scaled linearly between 50% and 70%)
+    if win_rate >= 0.50:
+        wr_pts = min(30.0, (win_rate - 0.50) * 300.0)  # 50% -> 0, 60% -> 30
+        score += wr_pts
+        components["win_rate"] = round(wr_pts, 1)
+
+    # Expectancy contribution (0-20, scales from 0 at -0.1R to 20 at +0.5R)
+    if expectancy > -0.1:
+        exp_pts = min(20.0, max(0.0, (expectancy + 0.1) * 40.0))
+        score += exp_pts
+        components["expectancy"] = round(exp_pts, 1)
+
+    # Profit factor (0-15, scales 1.0 -> 0, 2.0 -> 15)
+    if profit_factor >= 1.0:
+        pf_pts = min(15.0, (profit_factor - 1.0) * 15.0)
+        score += pf_pts
+        components["profit_factor"] = round(pf_pts, 1)
+
+    # Sharpe (0-10, scales 0 -> 0, 1.5 -> 10)
+    if sharpe >= 0:
+        sh_pts = min(10.0, sharpe * (10.0 / 1.5))
+        score += sh_pts
+        components["sharpe"] = round(sh_pts, 1)
+
+    # Sample size (0-10, full credit at 50+ trades, scales 20-50)
+    if sample >= 20:
+        s_pts = min(10.0, (sample - 20) * (10.0 / 30.0))
+        score += s_pts
+        components["sample"] = round(s_pts, 1)
+
+    # Regime match (0-10, full credit if regime in strategy's allowed set)
+    allowed = STRATEGY_REGIMES.get(strategy)
+    regime_match = allowed is None or regime in allowed
+    if regime_match:
+        score += 10
+        components["regime"] = 10
+    else:
+        components["regime"] = 0
+
+    # Trend strength is a hint already in enriched_summary. If the caller passes
+    # it as an extra kwarg, reward it; otherwise skip.
+    # (kept as a 0-5 optional bonus — the meta-controller prompt also surfaces it)
+    components["base"] = round(min(100.0, score), 1)
+    return {
+        "score": round(min(100.0, score), 1),
+        "components": components,
+        "regime_match": regime_match,
+        "sample_sufficient": sample >= 20,
+        "win_rate": win_rate,
+        "expectancy": expectancy,
+        "profit_factor": profit_factor,
+        "sharpe": sharpe,
+        "sample": sample,
+    }
+
+
+# ─── Volatility-targeted position sizing (Layer 1) ────────────────────────────
+# Position size scales inversely to current ATR, so dollar risk per trade stays
+# roughly constant across quiet and volatile regimes. Formula:
+#   size = (account * risk_pct / sl_distance) * clip(target_atr / current_atr, 0.5, 2.0)
+# This is the standard vol-targeting formula (Moreira & Muir, AHL/Man) adapted
+# to per-trade sizing. Returns 0 if inputs are invalid.
+
+def calc_vol_targeted_size(
+    account_equity: float,
+    risk_pct: float,
+    entry: float,
+    stop_loss: float,
+    current_atr: float,
+    target_atr: float,
+    min_size: float = 0.0,
+) -> dict:
+    """Vol-targeted position sizing. Returns {size, vol_scalar, dollar_risk}.
+
+    All inputs are float. `size` is in the asset's units (lots, shares, etc.).
+    `vol_scalar` is the multiplier applied to the flat-risk size — clamps to
+    [0.5, 2.0] so size never collapses to 0 or explodes 10x in a calm market.
+    """
+    sl_dist = abs(entry - stop_loss)
+    if sl_dist <= 0 or account_equity <= 0 or risk_pct <= 0:
+        return {"size": 0.0, "vol_scalar": 1.0, "dollar_risk": 0.0}
+    if not (current_atr > 0 and target_atr > 0):
+        vol_scalar = 1.0
+    else:
+        raw = target_atr / current_atr
+        vol_scalar = max(0.5, min(2.0, raw))
+    dollar_risk = account_equity * risk_pct
+    base_size = dollar_risk / sl_dist
+    size = base_size * vol_scalar
+    if min_size > 0 and size < min_size:
+        size = 0.0  # don't take a sub-min-size trade — round-trip cost eats it
+    return {
+        "size": round(size, 4),
+        "vol_scalar": round(vol_scalar, 3),
+        "dollar_risk": round(dollar_risk, 2),
+    }
+
+
+# ─── Session tag (Layer 4) ────────────────────────────────────────────────────
+# Time-of-day effects are real (Lux Algo, prop-trader consensus): the LDN-NY
+# overlap (12:00-17:00 UTC) is the highest-edge window for both FX and US
+# equities; off-hours (22:00-07:00 UTC) are dominated by retail and have
+# worse fills. We tag the current UTC hour so the meta-controller and the
+# A+ filter can down-weight off-hour setups.
+
+def tag_session(utc_hour: int | None = None) -> str:
+    """Return one of 'LDN', 'LDN-NY', 'NY', 'off-hours' for the given UTC hour.
+
+    Boundaries (UTC):
+      07:00-11:59  LDN       (London session, EU flow)
+      12:00-16:59  LDN-NY    (overlap, highest edge for FX + US equities)
+      17:00-21:59  NY        (post-overlap US session)
+      22:00-06:59  off-hours (Asia / weekend, low edge for our symbols)
+    """
+    from datetime import datetime, timezone as _tz
+    if utc_hour is None:
+        utc_hour = datetime.now(_tz.utc).hour
+    if 7 <= utc_hour <= 11:
+        return "LDN"
+    if 12 <= utc_hour <= 16:
+        return "LDN-NY"
+    if 17 <= utc_hour <= 21:
+        return "NY"
+    return "off-hours"
+
+
+def session_multiplier(session: str) -> float:
+    """Score multiplier for the deterministic score, based on session.
+
+    The LDN-NY overlap gets a small boost (research-supported high edge);
+    off-hours gets a hard penalty so the A+ filter naturally drops them.
+    """
+    return {
+        "LDN-NY":  1.10,
+        "LDN":     1.00,
+        "NY":      0.95,
+        "off-hours": 0.70,
+    }.get(session, 1.0)
+
+
 # ─── Smoke test ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

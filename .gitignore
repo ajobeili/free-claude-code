@@ -1,18 +1,10 @@
-__pycache__
-.claude
-.cursor
-.pytest_cache
-.ruff_cache
-.serena
-.venv
-agent_workspace
+# Environment / secrets
 .env
-/logs/
-server.log
-/server.*.log
-debug-*.log
-.coverage
-llama_cache
-.smoke-results
-/test-results/
-.vscode
+tools/.agents.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+python-portable/
+python-embed.zip

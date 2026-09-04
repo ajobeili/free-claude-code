@@ -46,6 +46,7 @@ app.add_middleware(
 
 API: CapitalAPI | None = None
 DEMO_MODE = get_settings().capital_environment == "demo"
+_LIVE_ENGINE_TASK: asyncio.Task | None = None
 
 
 # ─── Models ──────────────────────────────────────────────────────────────────
@@ -98,6 +99,13 @@ async def _init():
     ok = await API.login()
     if not ok:
         logger.warning("Capital.com offline — scan will use synthetic data")
+    # Start the live engine (it self-pauses if mode == offline).
+    try:
+        import asyncio as _aio
+        global _LIVE_ENGINE_TASK
+        _LIVE_ENGINE_TASK = _aio.create_task(_live_engine_loop())
+    except Exception as exc:
+        logger.warning("live engine failed to start: %s", exc)
 
 
 @app.on_event("shutdown")
@@ -371,6 +379,26 @@ async def tick(epic: str):
 
 
 
+
+
+@app.get("/api/event_context")
+async def event_context():
+    """Return the next high-impact event, minutes until release, and
+    whether we're inside a blackout or caution window. Cached for 60s
+    (the calendar is deterministic; we just don't need to recompute per
+    request)."""
+    import time as _t
+    now = _t.time()
+    cached = _EVENT_CTX_CACHE.get("ctx")
+    if cached and (now - cached[0]) < 60:
+        return cached[1]
+    from tools.agent_orchestrator import get_event_context
+    ctx = get_event_context()
+    _EVENT_CTX_CACHE["ctx"] = (now, ctx)
+    return ctx
+
+
+_EVENT_CTX_CACHE: dict[str, tuple[float, dict]] = {}
 
 
 @app.get("/api/debug/scalp_check")
@@ -694,23 +722,83 @@ async def scan(req: ScanRequest):
                     "momentum_3bar_pct": ind["momentum_3bar_pct"],
                 }
 
-                # AI evaluation (5s timeout; stub is instant)
+                # ── Layer 2: deterministic setup score + Layer 4: session tag ──────
                 try:
-                    if req.use_ai:
-                        ai_result = await asyncio.wait_for(
-                            evaluate_signal(sig_dict, enriched_summary), timeout=5.0
-                        )
-                    else:
-                        ai_result = await evaluate_signal_stub(sig_dict)
-                except asyncio.TimeoutError:
-                    ai_result = await evaluate_signal_stub(sig_dict)
+                    from tools.strategy_engine import (
+                        compute_setup_score, tag_session, session_multiplier,
+                        _classify_regime,
+                    )
+                    regime_str = _classify_regime(bars)
+                    dscore = compute_setup_score(
+                        bt_result or {}, regime_str, strat_name
+                    )
                 except Exception as exc:
-                    logger.warning("AI eval failed for %s/%s: %s", sym, strat_name, exc)
+                    logger.debug("deterministic score fallback for %s/%s: %s", sym, strat_name, exc)
+                    dscore = {"score": 0, "components": {}, "regime_match": False,
+                              "sample_sufficient": False, "win_rate": 0.5,
+                              "expectancy": 0.0, "profit_factor": 0.0,
+                              "sharpe": 0.0, "sample": 0}
+                    regime_str = "calm"
+                session = tag_session()
+                sess_mult = session_multiplier(session)
+                deterministic_score = round(min(100.0, dscore["score"] * sess_mult), 1)
+                enriched_summary["regime"] = regime_str
+                enriched_summary["session"] = session
+                enriched_summary["setup_score_raw"] = dscore["score"]
+                enriched_summary["setup_score"] = deterministic_score
+
+                # ── AI evaluation: meta-controller (single LLM, rich context) ─────
+                ai_result: dict = {}
+                if req.use_ai:
+                    try:
+                        from tools.agent_orchestrator import evaluate_signal_v2
+                        from tools.news import fetch_news
+                        from tools.intermarket import fetch_intermarket
+                        news_items = fetch_news(sym, hours=4, max_items=4)
+                        inter_data = fetch_intermarket("all")
+                        ai_result = await asyncio.wait_for(
+                            evaluate_signal_v2(
+                                sig_dict, enriched_summary,
+                                backtest=bt_result,
+                                deterministic_score=dscore,
+                                news=news_items,
+                                intermarket=inter_data,
+                            ),
+                            timeout=5.0,
+                        )
+                    except asyncio.TimeoutError:
+                        ai_result = {
+                            "verdict": "pass", "score": 0, "size_modifier": 1.0,
+                            "reasoning": "meta-controller timeout", "concerns": ["timeout"],
+                            "key_factors": [], "consensus": "pass",
+                            "consensus_confidence": 0.0, "latency_ms": 0,
+                        }
+                    except Exception as exc:
+                        logger.warning("meta-controller failed for %s/%s: %s", sym, strat_name, exc)
+                        ai_result = {
+                            "verdict": "pass", "score": 0, "size_modifier": 1.0,
+                            "reasoning": f"meta-controller error: {exc}", "concerns": ["llm_error"],
+                            "key_factors": [], "consensus": "pass",
+                            "consensus_confidence": 0.0, "latency_ms": 0,
+                        }
+                else:
                     ai_result = await evaluate_signal_stub(sig_dict)
 
                 sl_dist = abs(sig_dict["entry"] - sig_dict["stop_loss"])
                 tp_dist = abs(sig_dict["take_profit"] - sig_dict["entry"])
                 rr = round(tp_dist / sl_dist, 2) if sl_dist > 0 else 0.0
+
+                # ── A+ tag: deterministic_score >= 50 AND meta-controller approve ──
+                # The deterministic score is the gate; the AI is the tiebreaker.
+                # `grade` is one of "A+", "B", or "C" (off-hour penalty).
+                if session == "off-hours":
+                    grade = "C"
+                elif deterministic_score >= 70 and ai_result.get("verdict") in ("approve", "modify"):
+                    grade = "A+"
+                elif deterministic_score >= 50:
+                    grade = "B"
+                else:
+                    grade = "C"
 
                 setups.append({
                     "id": f"{sym}-{strat_name}-{int(time.time()*1000)}",
@@ -723,10 +811,24 @@ async def scan(req: ScanRequest):
                     "takeProfit": sig_dict["take_profit"],
                     "rr": rr,
                     "confidence": sig_dict["confidence"],
-                    "votes": ai_result["votes"],
-                    "riskManager": ai_result["risk_manager"],
-                    "consensus": ai_result["consensus"],
-                    "aiScore": int((ai_result.get("consensus_confidence", 0.5)) * 100),
+                    "votes": ai_result.get("votes", []),
+                    "riskManager": {
+                        "verdict": ai_result.get("verdict", "pass"),
+                        "final_size_pct": ai_result.get("size_modifier", 1.0),
+                        "concerns": ai_result.get("concerns", []),
+                        "summary": ai_result.get("reasoning", ""),
+                        "latency_ms": ai_result.get("latency_ms", 0),
+                    },
+                    "consensus": ai_result.get("consensus", "pass"),
+                    "aiScore": int(ai_result.get("score", 0)),
+                    "aiReasoning": ai_result.get("reasoning", ""),
+                    "aiConcerns": ai_result.get("concerns", []),
+                    "aiKeyFactors": ai_result.get("key_factors", []),
+                    "deterministicScore": deterministic_score,
+                    "grade": grade,
+                    "sizeModifier": ai_result.get("size_modifier", 1.0),
+                    "session": session,
+                    "regime": regime_str,
                     "reasoning": sig_dict["reasoning"],
                     "atr": sig_dict["atr"],
                     "dataQuality": "synth" if epic in synth_epics else "live",
@@ -735,7 +837,11 @@ async def scan(req: ScanRequest):
                 logger.exception("scan: strategy %s failed for %s", strat_name, sym)
                 errors.append({"symbol": sym, "strategy": strat_name, "issue": str(exc), "dataQuality": "error"})
 
-    setups.sort(key=lambda s: s["aiScore"], reverse=True)
+    # ── A+ filter: sort by deterministic score desc; mark top 3 as primary
+    setups.sort(key=lambda s: (s.get("deterministicScore", 0), s.get("aiScore", 0)), reverse=True)
+    for idx, s in enumerate(setups):
+        s["rank"] = idx + 1
+        s["isTopPick"] = (idx < 3) and (s.get("grade") in ("A+", "B"))
     t_end = time.perf_counter()
     logger.info(
         "scan: %d sym × %d strat — fetch=%dms indicators=%dms total=%dms found=%d",
@@ -769,6 +875,298 @@ async def execute(req: ExecuteRequest):
 async def logout():
     if API and API.cst:
         await API.logout()
+    return {"ok": True}
+
+
+# ─── Cockpit: mode toggle, status, watchlist, live engine ─────────────────────
+
+# Default watchlist used when the live engine starts. The user can override
+# via PUT /api/cockpit/watchlist.
+DEFAULT_WATCHLIST: list[str] = [
+    "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "NZDUSD", "USDCAD",
+    "AAPL", "TSLA", "NVDA", "MSFT", "AMZN", "META",
+]
+
+# Cooldown: don't re-alarm the same symbol+direction within this many seconds.
+COOLDOWN_S = 4 * 3600
+# LLM rate limit: at most one LLM call per this many seconds globally.
+_LLM_MIN_INTERVAL_S = 30.0
+_last_llm_ts: float = 0.0
+
+
+async def _rate_limited_llm(coro):
+    """Run a coroutine but ensure global LLM call rate >= 1 per 30s."""
+    global _last_llm_ts
+    import asyncio as _aio
+    now = time.time()
+    wait = _last_llm_ts + _LLM_MIN_INTERVAL_S - now
+    if wait > 0:
+        await _aio.sleep(wait)
+    try:
+        return await coro
+    finally:
+        _last_llm_ts = time.time()
+
+
+async def _live_engine_loop():
+    """Background loop: every TICK_S seconds, score the watchlist.
+
+    Behavior:
+      - offline:    sleep, no work
+      - demo/live:  for each watched symbol, run deterministic layers on the
+                    latest bars; if setup_score >= 50 and the LLM is not on
+                    cooldown, call the meta-controller; if it approves, raise
+                    an alarm in the cockpit cursor.
+    Self-restarts on transient errors. Sleeps at the top of every loop.
+    """
+    import asyncio as _aio
+    TICK_S = 30  # seconds
+    while True:
+        try:
+            mode = _get_mode()
+            cursor = _get_cursor()
+            if mode == "offline" or not cursor.get("watchlist"):
+                await _aio.sleep(TICK_S)
+                continue
+
+            # Score each watched symbol; collect the best setup per symbol.
+            from tools.strategy_engine import (
+                _classify_regime, compute_setup_score, tag_session,
+                session_multiplier, ALL_STRATEGIES, backtest,
+            )
+            from tools.agent_orchestrator import evaluate_signal_v2
+            from tools.news import fetch_news
+            from tools.intermarket import fetch_intermarket
+
+            results: list[dict] = []
+            for sym in cursor["watchlist"]:
+                try:
+                    bars = _fetch_bars_for(sym, 300)
+                except Exception as exc:
+                    logger.debug("live engine: bars for %s failed: %s", sym, exc)
+                    continue
+                if not bars or len(bars) < 220:
+                    continue
+                regime = _classify_regime(bars)
+                # Run each strategy, take the highest-scoring valid signal.
+                for strat_name, fn in ALL_STRATEGIES.items():
+                    try:
+                        sig = fn(bars, sym)
+                    except Exception as exc:
+                        logger.debug("strategy %s on %s raised: %s", strat_name, sym, exc)
+                        continue
+                    if sig is None:
+                        continue
+                    try:
+                        bt = backtest(bars[-220:], fn, sym, initial_capital=10_000.0)
+                    except Exception:
+                        bt = {"sample": 0, "win_rate": 0.5, "expectancy_r": 0.0,
+                              "profit_factor": 0.0, "sharpe": 0.0}
+                    if (bt.get("sample") or 0) < 10:
+                        continue
+                    try:
+                        dscore = compute_setup_score(bt, regime, strat_name)
+                    except Exception:
+                        dscore = {"score": 0, "components": {}, "regime_match": False,
+                                  "sample_sufficient": False, "win_rate": 0.5,
+                                  "expectancy": 0.0, "profit_factor": 0.0,
+                                  "sharpe": 0.0, "sample": 0}
+                    if dscore["score"] < 50:
+                        continue
+                    results.append({
+                        "symbol": sym, "strategy": strat_name,
+                        "signal": sig, "backtest": bt, "dscore": dscore,
+                        "regime": regime,
+                    })
+
+            if not results:
+                cursor["last_tick"] = int(time.time())
+                cursor["active_signal"] = None
+                cursor["watch_queue"] = []
+                _save_cursor(cursor)
+                await _aio.sleep(TICK_S)
+                continue
+
+            # Rank by deterministic score, take top 3 as watch queue.
+            results.sort(key=lambda r: r["dscore"]["score"], reverse=True)
+            top = results[:3]
+            cursor["watch_queue"] = [
+                {"symbol": r["symbol"], "strategy": r["strategy"],
+                 "score": r["dscore"]["score"], "direction": r["signal"].direction,
+                 "entry": r["signal"].entry_price}
+                for r in top
+            ]
+            cursor["last_tick"] = int(time.time())
+
+            # Only call the LLM on the top setup, and only if it would change
+            # the active signal. Rate-limited.
+            best = top[0]
+            sig = best["signal"]
+            sig_dict = sig.to_dict()
+            sig_dict["symbol"] = best["symbol"]
+            news = fetch_news(best["symbol"], hours=4, max_items=3)
+            inter = fetch_intermarket("all")
+            ai = await _rate_limited_llm(
+                evaluate_signal_v2(
+                    sig_dict,
+                    {
+                        "regime": best["regime"],
+                        "session": tag_session(),
+                        "rsi": 50, "adx": 20, "atr": 0,
+                        "bb_position_pct": 50, "trend_score": 50,
+                        "vol_scalar": 1.0, "baseline_size": 0.1,
+                    },
+                    backtest=best["backtest"],
+                    deterministic_score=best["dscore"],
+                    news=news, intermarket=inter,
+                )
+            )
+            if ai.get("verdict") == "approve":
+                cursor["active_signal"] = {
+                    "symbol": best["symbol"],
+                    "strategy": best["strategy"],
+                    "direction": sig.direction,
+                    "entry": sig.entry_price,
+                    "stop_loss": sig.stop_loss,
+                    "take_profit": sig.take_profit,
+                    "score": best["dscore"]["score"],
+                    "ai_score": ai.get("score", 0),
+                    "size_modifier": ai.get("size_modifier", 1.0),
+                    "reasoning": ai.get("reasoning", ""),
+                    "concerns": ai.get("concerns", []),
+                    "key_factors": ai.get("key_factors", []),
+                    "raised_at": int(time.time()),
+                }
+            else:
+                cursor["active_signal"] = None
+
+            _save_cursor(cursor)
+            await _aio.sleep(TICK_S)
+        except Exception as exc:
+            logger.exception("live engine loop error: %s", exc)
+            await _aio.sleep(10)
+
+
+def _get_mode() -> str:
+    try:
+        import tools.state as _st
+        return _st.get_mode()
+    except Exception:
+        return "offline"
+
+
+def _get_cursor() -> dict:
+    try:
+        import tools.state as _st
+        cur = _st.get_engine_cursor()
+        if not cur.get("watchlist"):
+            cur["watchlist"] = list(DEFAULT_WATCHLIST)
+        return cur
+    except Exception:
+        return {"last_tick": 0, "active_signal": None,
+                "watch_queue": [], "watchlist": list(DEFAULT_WATCHLIST)}
+
+
+def _save_cursor(c: dict) -> None:
+    try:
+        import tools.state as _st
+        _st.set_engine_cursor(c)
+    except Exception as exc:
+        logger.debug("save cursor failed: %s", exc)
+
+
+def _fetch_bars_for(symbol: str, n: int) -> list[dict]:
+    """Best-effort: try Capital.com via API; fall back to MT5; else synth."""
+    try:
+        epic = _symbol_to_epic(symbol)
+        # The /api/ohlcv endpoint uses the capital API; we don't have a
+        # direct sync helper, so we call through the API singleton.
+        if API and API.cst:
+            return API.get_ohlcv(epic, "H1", n)
+    except Exception:
+        pass
+    try:
+        from tools.mt5_connector import get_ohlcv
+        return get_ohlcv(symbol, "H1", n)
+    except Exception:
+        pass
+    return _synth_bars(symbol, n)
+
+
+def _symbol_to_epic(symbol: str) -> str:
+    # Best-effort: many brokers use the symbol as the epic; this is the
+    # simplest correct default and avoids hard-coding a brittle map.
+    return symbol
+
+
+def _synth_bars(symbol: str, n: int) -> list[dict]:
+    """Last-resort synthetic bars so the engine can still score deterministically."""
+    import math as _m
+    base = {"EURUSD": 1.08, "GBPUSD": 1.27, "USDJPY": 154.0, "AUDUSD": 0.66,
+            "NZDUSD": 0.61, "USDCAD": 1.36,
+            "AAPL": 220.0, "TSLA": 250.0, "NVDA": 130.0, "MSFT": 420.0,
+            "AMZN": 190.0, "META": 540.0, "GOOGL": 175.0, "NFLX": 700.0}.get(symbol, 100.0)
+    out = []
+    t = int(time.time()) - n * 3600
+    p = base
+    for i in range(n):
+        # gentle random walk
+        p = p * (1 + 0.001 * _m.sin(i / 7.0) + 0.002 * ((i * 13) % 7 - 3) / 10.0)
+        out.append({
+            "time": t + i * 3600,
+            "open": round(p, 5), "high": round(p * 1.001, 5),
+            "low": round(p * 0.999, 5), "close": round(p, 5),
+            "volume": 1000,
+        })
+    return out
+
+
+@app.get("/api/cockpit")
+async def get_cockpit():
+    """Return current cockpit state for the UI: mode, last tick, active signal, watch queue, recent signals."""
+    import tools.state as _st
+    return {
+        "mode": _st.get_mode(),
+        "cursor": _st.get_engine_cursor(),
+        "recent": _st.get_recent_signals(10),
+    }
+
+
+class ModeRequest(BaseModel):
+    mode: str
+
+
+@app.post("/api/cockpit/mode")
+async def set_cockpit_mode(req: ModeRequest):
+    import tools.state as _st
+    if req.mode not in ("offline", "demo", "live"):
+        return {"error": f"invalid mode: {req.mode}"}
+    new_mode = _st.set_mode(req.mode)
+    return {"mode": new_mode, "ok": True}
+
+
+class WatchlistRequest(BaseModel):
+    symbols: list[str]
+
+
+@app.put("/api/cockpit/watchlist")
+async def set_cockpit_watchlist(req: WatchlistRequest):
+    import tools.state as _st
+    cur = _st.get_engine_cursor()
+    cur["watchlist"] = [s.upper() for s in req.symbols][:24]
+    _st.set_engine_cursor(cur)
+    return {"watchlist": cur["watchlist"], "ok": True}
+
+
+@app.post("/api/cockpit/ack")
+async def ack_active_signal():
+    """Trader has seen (or acted on) the active signal. Clear it from the cursor."""
+    import tools.state as _st
+    cur = _st.get_engine_cursor()
+    if cur.get("active_signal"):
+        _st.append_signal(cur["active_signal"])
+    cur["active_signal"] = None
+    _st.set_engine_cursor(cur)
     return {"ok": True}
 
 

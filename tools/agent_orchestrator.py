@@ -23,6 +23,267 @@ PROXY_URL = get_settings().fcc_proxy_url
 TIMEOUT = 60.0  # seconds per agent call
 
 
+# ─── Event calendar (deterministic, no API calls) ────────────────────────────
+# High-impact recurring events. UTC times. NFP is first Friday of month;
+# FOMC is 8/year (third Wednesday of Jan/Mar/May/Jun/Jul/Sep/Nov + Dec);
+# CPI is monthly (approx 13th, 13:30 UTC). We don't have the exact date for
+# FOMC/CPI without an API, so we use approximate rules and label them.
+#
+# The output of get_event_context() is injected into the Macro/Event agent's
+# prompt so it has actual time awareness (the LLM doesn't otherwise know
+# whether NFP is 5 minutes away or 5 months away).
+
+import calendar as _cal
+from datetime import datetime, timedelta, timezone as _tz
+
+# Approximate monthly CPI date — moves a few days each month, but
+# always lands in the 10th-14th. We pick the 13th as the most common.
+CPI_DAY_OF_MONTH = 13
+# FOMC: 8 meetings per year on the third Wednesday of Jan, Mar, May, Jun,
+# Jul, Sep, Nov, Dec at 19:00 UTC (statement); 19:30 UTC (presser).
+FOMC_MONTHS = (1, 3, 5, 6, 7, 9, 11, 12)
+# ECB: 8/year, second Thursday of Jan, Mar, Apr, Jun, Jul, Sep, Oct, Dec at 13:15 UTC.
+ECB_MONTHS = (1, 3, 4, 6, 7, 9, 10, 12)
+# BOE: 8/year, third Thursday of Feb, Apr, Jun, Aug, Sep, Nov, Dec at 12:00 UTC.
+BOE_MONTHS = (2, 4, 6, 8, 9, 11, 12)
+
+# Blackout window in minutes around the event (no new entries).
+BLACKOUT_MINUTES = 30
+# Pre-event caution window — reduce size / modify verdict.
+CAUTION_HOURS = 2
+
+
+def _nth_weekday(year: int, month: int, weekday: int, n: int) -> datetime:
+    """Return the n-th occurrence of `weekday` (0=Mon..6=Sun) in the given month."""
+    first = datetime(year, month, 1)
+    first_weekday = first.weekday()
+    days_ahead = (weekday - first_weekday) % 7
+    first_occurrence = 1 + days_ahead
+    day = first_occurrence + (n - 1) * 7
+    # Guard against overflow (e.g. asking for 5th Friday in a month with only 4).
+    if day > _cal.monthrange(year, month)[1]:
+        day -= 7
+    return datetime(year, month, day, tzinfo=_tz.utc)
+
+
+def _next_nfp(now: datetime) -> datetime:
+    """First Friday of `now`'s month, 13:30 UTC. If we're past it, next month."""
+    first_friday = _nth_weekday(now.year, now.month, 4, 1).replace(hour=13, minute=30)
+    if first_friday < now:
+        if now.month == 12:
+            first_friday = _nth_weekday(now.year + 1, 1, 4, 1).replace(hour=13, minute=30)
+        else:
+            first_friday = _nth_weekday(now.year, now.month + 1, 4, 1).replace(hour=13, minute=30)
+    return first_friday
+
+
+def _next_cpi(now: datetime) -> datetime:
+    """13th of `now`'s month, 13:30 UTC. If past, next month."""
+    cpi = datetime(now.year, now.month, CPI_DAY_OF_MONTH, 13, 30, tzinfo=_tz.utc)
+    if cpi < now:
+        if now.month == 12:
+            cpi = datetime(now.year + 1, 1, CPI_DAY_OF_MONTH, 13, 30, tzinfo=_tz.utc)
+        else:
+            cpi = datetime(now.year, now.month + 1, CPI_DAY_OF_MONTH, 13, 30, tzinfo=_tz.utc)
+    return cpi
+
+
+def _next_fomc(now: datetime) -> datetime:
+    """Next FOMC statement release, 19:00 UTC."""
+    candidates = []
+    for m in FOMC_MONTHS:
+        d = _nth_weekday(now.year, m, 2, 3).replace(hour=19, minute=0)
+        if d > now:
+            candidates.append(d)
+    if not candidates:
+        # Roll into next year.
+        for m in FOMC_MONTHS:
+            d = _nth_weekday(now.year + 1, m, 2, 3).replace(hour=19, minute=0)
+            candidates.append(d)
+    return min(candidates)
+
+
+def _next_ecb(now: datetime) -> datetime:
+    """Next ECB rate decision, 13:15 UTC."""
+    candidates = []
+    for m in ECB_MONTHS:
+        d = _nth_weekday(now.year, m, 3, 2).replace(hour=13, minute=15)
+        if d > now:
+            candidates.append(d)
+    if not candidates:
+        for m in ECB_MONTHS:
+            d = _nth_weekday(now.year + 1, m, 3, 2).replace(hour=13, minute=15)
+            candidates.append(d)
+    return min(candidates)
+
+
+def _next_boe(now: datetime) -> datetime:
+    """Next BOE rate decision, 12:00 UTC."""
+    candidates = []
+    for m in BOE_MONTHS:
+        d = _nth_weekday(now.year, m, 3, 3).replace(hour=12, minute=0)
+        if d > now:
+            candidates.append(d)
+    if not candidates:
+        for m in BOE_MONTHS:
+            d = _nth_weekday(now.year + 1, m, 3, 3).replace(hour=12, minute=0)
+            candidates.append(d)
+    return min(candidates)
+
+
+# ─── Previous-event mirrors (roll the clock back to find the last occurrence) ─
+# Each computes "the most recent event of this type on or before `now`".
+# Used to detect the 30-minute post-event blackout window.
+
+
+def _prev_nfp(now: datetime) -> datetime:
+    """First Friday of `now`'s month, 13:30 UTC. If we're before it, previous month."""
+    first_friday = _nth_weekday(now.year, now.month, 4, 1).replace(hour=13, minute=30)
+    if first_friday > now:
+        if now.month == 1:
+            first_friday = _nth_weekday(now.year - 1, 12, 4, 1).replace(hour=13, minute=30)
+        else:
+            first_friday = _nth_weekday(now.year, now.month - 1, 4, 1).replace(hour=13, minute=30)
+    return first_friday
+
+
+def _prev_cpi(now: datetime) -> datetime:
+    """13th of `now`'s month, 13:30 UTC. If before, previous month."""
+    cpi = datetime(now.year, now.month, CPI_DAY_OF_MONTH, 13, 30, tzinfo=_tz.utc)
+    if cpi > now:
+        if now.month == 1:
+            cpi = datetime(now.year - 1, 12, CPI_DAY_OF_MONTH, 13, 30, tzinfo=_tz.utc)
+        else:
+            cpi = datetime(now.year, now.month - 1, CPI_DAY_OF_MONTH, 13, 30, tzinfo=_tz.utc)
+    return cpi
+
+
+def _prev_fomc(now: datetime) -> datetime:
+    """Most recent FOMC statement release on or before `now`."""
+    candidates = []
+    for m in FOMC_MONTHS:
+        d = _nth_weekday(now.year, m, 2, 3).replace(hour=19, minute=0)
+        if d <= now:
+            candidates.append(d)
+    if not candidates:
+        for m in FOMC_MONTHS:
+            d = _nth_weekday(now.year - 1, m, 2, 3).replace(hour=19, minute=0)
+            candidates.append(d)
+    return max(candidates)
+
+
+def _prev_ecb(now: datetime) -> datetime:
+    """Most recent ECB rate decision on or before `now`."""
+    candidates = []
+    for m in ECB_MONTHS:
+        d = _nth_weekday(now.year, m, 3, 2).replace(hour=13, minute=15)
+        if d <= now:
+            candidates.append(d)
+    if not candidates:
+        for m in ECB_MONTHS:
+            d = _nth_weekday(now.year - 1, m, 3, 2).replace(hour=13, minute=15)
+            candidates.append(d)
+    return max(candidates)
+
+
+def _prev_boe(now: datetime) -> datetime:
+    """Most recent BOE rate decision on or before `now`."""
+    candidates = []
+    for m in BOE_MONTHS:
+        d = _nth_weekday(now.year, m, 3, 3).replace(hour=12, minute=0)
+        if d <= now:
+            candidates.append(d)
+    if not candidates:
+        for m in BOE_MONTHS:
+            d = _nth_weekday(now.year - 1, m, 3, 3).replace(hour=12, minute=0)
+            candidates.append(d)
+    return max(candidates)
+
+
+def get_event_context(now: datetime | None = None) -> dict:
+    """Compute event context with symmetric pre/post blackout detection.
+
+    The blackout window is [event - 30m, event + 30m]. We compare both the
+    next event and the most recent past event so that post-event windows
+    (the 30 minutes *after* a release) are correctly flagged.
+
+    Returns:
+        {
+            "now_utc": "2026-09-04 14:23:00 UTC",
+            "next_event": "NFP",
+            "next_event_utc": "2026-09-05 13:30 UTC",
+            "minutes_until": 1387,            # minutes to the next event
+            "active_event": "NFP",            # the event that is in our window
+            "active_event_utc": "...",        # its timestamp
+            "minutes_to_active": -8,          # negative if in post-event window
+            "in_pre_window": False,
+            "in_post_window": True,
+            "blackout_active": True,
+            "in_caution_window": True,
+        }
+    """
+    if now is None:
+        now = datetime.now(_tz.utc)
+    next_events = [
+        ("NFP",   _next_nfp(now)),
+        ("CPI",   _next_cpi(now)),
+        ("FOMC",  _next_fomc(now)),
+        ("ECB",   _next_ecb(now)),
+        ("BOE",   _next_boe(now)),
+    ]
+    prev_events = [
+        ("NFP",   _prev_nfp(now)),
+        ("CPI",   _prev_cpi(now)),
+        ("FOMC",  _prev_fomc(now)),
+        ("ECB",   _prev_ecb(now)),
+        ("BOE",   _prev_boe(now)),
+    ]
+    next_events.sort(key=lambda x: x[1])
+    prev_events.sort(key=lambda x: x[1], reverse=True)  # most recent first
+
+    next_name, next_ts = next_events[0]
+    prev_name, prev_ts = prev_events[0]
+
+    minutes_to_next = int((next_ts - now).total_seconds() / 60)
+    minutes_since_prev = int((now - prev_ts).total_seconds() / 60)
+
+    in_pre_blackout = 0 <= minutes_to_next <= BLACKOUT_MINUTES
+    in_post_blackout = 0 <= minutes_since_prev < BLACKOUT_MINUTES
+    in_pre_caution = 0 <= minutes_to_next <= CAUTION_HOURS * 60
+    in_post_caution = 0 <= minutes_since_prev < CAUTION_HOURS * 60
+
+    blackout_active = in_pre_blackout or in_post_blackout
+    in_caution_window = blackout_active or in_pre_caution or in_post_caution
+
+    # Pick the event that is "in our window" — post takes precedence because
+    # the next event can be hours/days away while we're still recovering from
+    # a release that just happened.
+    if in_post_blackout or in_post_caution:
+        active_name, active_ts = prev_name, prev_ts
+        minutes_to_active = -minutes_since_prev
+    elif in_pre_blackout or in_pre_caution:
+        active_name, active_ts = next_name, next_ts
+        minutes_to_active = minutes_to_next
+    else:
+        # No active window — default to the next event for the banner.
+        active_name, active_ts = next_name, next_ts
+        minutes_to_active = minutes_to_next
+
+    return {
+        "now_utc": now.strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "next_event": next_name,
+        "next_event_utc": next_ts.strftime("%Y-%m-%d %H:%M UTC"),
+        "minutes_until": minutes_to_next,
+        "active_event": active_name,
+        "active_event_utc": active_ts.strftime("%Y-%m-%d %H:%M UTC"),
+        "minutes_to_active": minutes_to_active,
+        "in_pre_window": in_pre_blackout,
+        "in_post_window": in_post_blackout,
+        "blackout_active": blackout_active,
+        "in_caution_window": in_caution_window,
+    }
+
+
 # ─── Agent config ─────────────────────────────────────────────────────────────
 
 @dataclass
@@ -82,9 +343,20 @@ AGENTS: list[AgentConfig] = [
         provider_type="mistral",
         model="mistral-large-latest",
         system=(
-            "You are a macro and event trader. You assess whether news, earnings, "
-            "central bank calendars, or macro regime shifts affect this setup. "
-            "You VETO setups during high-impact news events or central bank windows. "
+            "You are a macro and event trader. You receive a deterministic "
+            "EVENT CALENDAR block in every prompt with the current UTC time, "
+            "an active_event (the event currently in the pre/post window, if any), "
+            "and two flags: blackout_active and in_caution_window. The window is "
+            "symmetric — blackout covers 30 min BEFORE and 30 min AFTER a high-impact "
+            "release; caution covers 2 h on each side.\n"
+            "  - The calendar is INFORMATIONAL by default. You may MENTION the active "
+            "event and window in your reasoning, but you should NOT veto a setup "
+            "solely because of the calendar. Use your judgment based on real macro "
+            "context (e.g. recent rate decisions, geopolitics, sector moves).\n"
+            "  - If the orchestrator's EVENT_GATE_ENABLED flag is on (the prompt will "
+            "state 'GATE ENABLED'), then: if blackout_active is true → verdict MUST "
+            "be 'reject'; if in_caution_window is true (but not blackout) → verdict "
+            "MUST be 'modify' with confidence 0.2 or lower.\n"
             "Respond ONLY in JSON: {\"verdict\": \"approve|reject|modify\", "
             "\"confidence\": 0.0-1.0, \"reasoning\": \"1-2 sentences\", "
             "\"suggested_sl\": number|null, \"suggested_tp\": number|null}. "
@@ -249,8 +521,37 @@ async def evaluate_signal(
         "Your verdict:"
     )
 
+    # Compute event context once, prepend to the Macro/Event agent's prompt only.
+    event_ctx = get_event_context()
+    gate_enabled = get_settings().event_gate_enabled
+    active = event_ctx.get("active_event", event_ctx["next_event"])
+    active_utc = event_ctx.get("active_event_utc", event_ctx["next_event_utc"])
+    mins_active = event_ctx.get("minutes_to_active", event_ctx["minutes_until"])
+    in_post = event_ctx.get("in_post_window", False)
+    rel = "released" if in_post else "until release"
+    gate_marker = "GATE ENABLED — enforce blackout/caution rules" if gate_enabled \
+        else "GATE DISABLED — calendar is informational only, do not veto on calendar"
+    event_block = (
+        "EVENT CALENDAR (computed by Python, deterministic — do not infer time yourself):\n"
+        f"Now: {event_ctx['now_utc']}\n"
+        f"Next high-impact event: {event_ctx['next_event']} at {event_ctx['next_event_utc']} "
+        f"({event_ctx['minutes_until']} min away)\n"
+        f"Active event (currently in our pre/post window): {active} at {active_utc}\n"
+        f"Minutes {rel} active event: {mins_active}\n"
+        f"in_pre_window: {event_ctx['in_pre_window']}, in_post_window: {in_post}\n"
+        f"blackout_active: {event_ctx['blackout_active']}\n"
+        f"in_caution_window: {event_ctx['in_caution_window']}\n"
+        f"{gate_marker}\n"
+        "\nFollow your system-prompt rules for blackout and caution flags.\n\n"
+    )
+
+    async def _call_with_event(cfg: AgentConfig) -> dict:
+        if cfg.name == "Macro/Event":
+            return await call_agent(cfg, event_block + user_prompt)
+        return await call_agent(cfg, user_prompt)
+
     # Run 4 traders in parallel
-    tasks = [call_agent(cfg, user_prompt) for cfg in AGENTS]
+    tasks = [_call_with_event(cfg) for cfg in AGENTS]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     votes: list[dict] = []
@@ -294,6 +595,28 @@ async def evaluate_signal(
     approve_count = sum(1 for v in votes if v.get("verdict") == "approve")
     reject_count = sum(1 for v in votes if v.get("verdict") == "reject")
     modify_count = sum(1 for v in votes if v.get("verdict") == "modify")
+
+    # Defense-in-depth: when the event gate is OFF, any reject from the
+    # Macro/Event agent is treated as informational, not a veto. This catches
+    # the case where the deterministic calendar says "post-NFP blackout" for
+    # a phantom event the user never opted into.
+    if not gate_enabled:
+        for v in votes:
+            if v.get("agent") == "Macro/Event" and v.get("verdict") == "reject":
+                logger.info(
+                    "EVENT_GATE_ENABLED=false — neutralizing Macro/Event reject "
+                    "(reasoning: %s)", v.get("reasoning", "")[:120],
+                )
+                v["verdict"] = "modify"
+                v["confidence"] = min(v.get("confidence", 0.5), 0.5)
+                v["reasoning"] = (
+                    "[event gate off] " + v.get("reasoning", "")
+                )
+        # Recount after the override.
+        approve_count = sum(1 for v in votes if v.get("verdict") == "approve")
+        reject_count = sum(1 for v in votes if v.get("verdict") == "reject")
+        modify_count = sum(1 for v in votes if v.get("verdict") == "modify")
+
     consensus = "approve" if approve_count >= 3 else "reject" if reject_count >= 3 else "modify"
 
     valid_votes = [v for v in votes if "error" not in v]
@@ -315,6 +638,296 @@ async def evaluate_signal(
         "reject_count": reject_count,
         "modify_count": modify_count,
         "agent_latencies": latencies,
+        "event_context": event_ctx,
+        "event_gate_enabled": gate_enabled,
+    }
+
+
+# ─── Free-tier model allowlist (cost guard) ──────────────────────────────────
+# Default: only call models that have a free tier. Refuse to bill the user
+# by accident. Set LLM_ALLOW_PAID=true to opt back in to paid models.
+#
+# Allowlist matches (provider, model) prefixes. If a row is matched, the call
+# proceeds. If LLM_ALLOW_PAID is true, the check is skipped entirely.
+
+import os as _os
+
+_FREE_TIER_ALLOWLIST: tuple[tuple[str, str], ...] = (
+    # Groq free tier
+    ("groq", "llama-3.3-70b-versatile"),
+    ("groq", "llama-3.1-8b-instant"),
+    ("groq", "mixtral-8x7b-32768"),
+    ("groq", "gemma2-9b-it"),
+    # DeepSeek free tier
+    ("deepseek", "deepseek-chat"),
+    # Gemini free tier (Flash models)
+    ("gemini", "gemini-2.0-flash"),
+    ("gemini", "gemini-1.5-flash"),
+    # Mistral free tier
+    ("mistral", "mistral-small-latest"),
+    ("mistral", "open-mistral-nemo"),
+    # OpenRouter free models (prefix match)
+    ("openrouter", "meta-llama/"),
+    ("openrouter", "google/gemini-2.0-flash-exp:free"),
+    ("openrouter", "deepseek/deepseek-chat:free"),
+    ("openrouter", "mistralai/mistral-7b-instruct:free"),
+    ("openrouter", ":free"),  # any ":free" suffix on OpenRouter
+)
+
+
+def _is_free_tier(provider: str, model: str) -> bool:
+    """Return True if (provider, model) is on the free-tier allowlist."""
+    p = (provider or "").lower()
+    m = (model or "").lower()
+    for ap, am in _FREE_TIER_ALLOWLIST:
+        if p == ap and (m == am or m.startswith(am) or am in m):
+            return True
+    return False
+
+
+def _resolve_meta_config() -> AgentConfig:
+    """Pick the meta-controller model. Honors LLM_META_PROVIDER / LLM_META_MODEL
+    env vars; falls back to groq llama-3.3-70b (free, fast, strong enough)."""
+    provider = _os.environ.get("LLM_META_PROVIDER", "groq")
+    model = _os.environ.get("LLM_META_MODEL", "llama-3.3-70b-versatile")
+    return AgentConfig(name="Meta-Controller", provider_type=provider, model=model, system="")
+
+
+META_CONTROLLER_SYSTEM = (
+    "You are a senior trading meta-controller. You are NOT a signal generator.\n"
+    "Your job is to combine the structured inputs below into a calibrated final\n"
+    "decision, with reasoning that a human trader can audit.\n\n"
+    "OUTPUT RULES:\n"
+    "  - Return ONLY a JSON object. No prose, no markdown.\n"
+    "  - Keys: verdict, score, size_modifier, reasoning, concerns, key_factors.\n"
+    "  - verdict: 'approve' | 'modify' | 'reject' | 'pass'.\n"
+    "  - score: integer 0-100, your calibrated confidence.\n"
+    "  - size_modifier: float 0.0-2.0, multiplier on the baseline size.\n"
+    "  - reasoning: 2-3 sentences, MUST reference SPECIFIC LAYER VALUES\n"
+    "    (e.g. '62% backtest + soft DXY + LDN-NY overlap = high confidence;\n"
+    "     size_modifier 0.8 because recent journal shows mixed results on this pair').\n"
+    "  - concerns: list of short strings naming specific risks.\n"
+    "  - key_factors: list of 2-3 layer names that drove the decision.\n\n"
+    "HARD RULES (the orchestrator will override you if you break these):\n"
+    "  1. You may NOT approve a setup with setup_score < 50.\n"
+    "  2. You may NOT set size_modifier > 1.5 unless ALL of:\n"
+    "     backtest_win_rate >= 65%, profit_factor >= 2.0, regime matched,\n"
+    "     AND no concerning news.\n"
+    "  3. If verdict = 'pass', explain in reasoning why it's borderline\n"
+    "     rather than reject (so the trader sees the trade).\n"
+    "  4. Reasoning must be auditable: another trader reading only your\n"
+    "     reasoning + the layers should reach the same conclusion."
+)
+
+
+async def evaluate_signal_v2(
+    signal: dict,
+    bars_summary: dict,
+    backtest: dict | None = None,
+    deterministic_score: dict | None = None,
+    news: list[dict] | None = None,
+    intermarket: dict | None = None,
+    journal: list[dict] | None = None,
+) -> dict:
+    """Single-LLM meta-controller over calibrated deterministic layers.
+
+    Returns a dict with: verdict, score, size_modifier, reasoning, concerns,
+    key_factors, latency_ms, model, and the original 'votes' field replaced
+    by a single vote entry (the meta-controller). Designed to be cheaper,
+    faster, and more explainable than the 4-agent vote.
+    """
+    cfg = _resolve_meta_config()
+    if not _is_free_tier(cfg.provider_type, cfg.model):
+        if _os.environ.get("LLM_ALLOW_PAID", "false").lower() not in ("1", "true", "yes"):
+            return {
+                "verdict": "pass",
+                "score": 0,
+                "size_modifier": 1.0,
+                "reasoning": (
+                    f"Meta-controller skipped: {cfg.provider_type}/{cfg.model} is not on "
+                    "the free-tier allowlist. Set LLM_ALLOW_PAID=true to override."
+                ),
+                "concerns": ["non-free model blocked"],
+                "key_factors": [],
+                "votes": [],
+                "consensus": "pass",
+                "consensus_confidence": 0.0,
+                "model": f"{cfg.provider_type}/{cfg.model}",
+                "latency_ms": 0,
+            }
+
+    # Build the structured prompt.
+    dscore = deterministic_score or {}
+    parts: list[str] = []
+    parts.append("═══ SETUP (deterministic layers) ═══")
+    parts.append(f"Symbol:       {signal.get('symbol', '?')}")
+    parts.append(f"Strategy:     {signal.get('strategy', '?')}")
+    parts.append(f"Direction:    {(signal.get('direction') or '?').upper()}")
+    parts.append(f"Entry:        {signal.get('entry', signal.get('entry_price', 0))}")
+    parts.append(f"Stop loss:    {signal.get('stop_loss', 0)}")
+    parts.append(f"Take profit:  {signal.get('take_profit', 0)}")
+    if dscore:
+        comp = dscore.get("components", {})
+        parts.append(f"Setup score:  {dscore.get('score', '?')} / 100  (deterministic)")
+        parts.append(f"  win_rate:    {dscore.get('win_rate', '?')}  "
+                     f"({comp.get('win_rate', 0):.1f}/30)")
+        parts.append(f"  expectancy:  {dscore.get('expectancy', '?')}R  "
+                     f"({comp.get('expectancy', 0):.1f}/20)")
+        parts.append(f"  profit_fac:  {dscore.get('profit_factor', '?')}  "
+                     f"({comp.get('profit_factor', 0):.1f}/15)")
+        parts.append(f"  sharpe:      {dscore.get('sharpe', '?')}  "
+                     f"({comp.get('sharpe', 0):.1f}/10)")
+        parts.append(f"  sample:      {dscore.get('sample', '?')}  "
+                     f"({comp.get('sample', 0):.1f}/10)")
+        parts.append(f"  regime:      match={dscore.get('regime_match')}")
+    if backtest:
+        parts.append("")
+        parts.append(f"Backtest:     WR {backtest.get('win_rate', 0):.0%}, "
+                     f"expectancy {backtest.get('expectancy_r', 0):+.2f}R, "
+                     f"PF {backtest.get('profit_factor', 0):.2f}, "
+                     f"Sharpe {backtest.get('sharpe', 0):+.2f}, "
+                     f"sample {backtest.get('sample', 0)}")
+    parts.append(f"Regime:       {bars_summary.get('regime', '?')}")
+    parts.append(f"Session:      {bars_summary.get('session', '?')}")
+    parts.append(f"Vol scalar:   {bars_summary.get('vol_scalar', 1.0):.2f}")
+    parts.append(f"Indicators:   RSI {bars_summary.get('rsi', '?')}, "
+                 f"ADX {bars_summary.get('adx', '?')}, "
+                 f"BB% {bars_summary.get('bb_position_pct', '?')}, "
+                 f"ATR {bars_summary.get('atr', '?')}, "
+                 f"trend {bars_summary.get('trend_score', '?')}")
+    parts.append(f"Baseline size: {bars_summary.get('baseline_size', '?')}")
+
+    if news:
+        parts.append("")
+        parts.append("═══ NEWS (last 4h) ═══")
+        for n in news[:5]:
+            parts.append(f"  - {n.get('title', '?')} ({n.get('source', '?')}, "
+                         f"{n.get('age_min', '?')}m ago)")
+
+    if intermarket:
+        parts.append("")
+        parts.append("═══ INTER-MARKET (1h change) ═══")
+        for k, v in intermarket.items():
+            if isinstance(v, dict):
+                parts.append(f"  {k}: {v.get('price', '?')}  "
+                             f"({v.get('change_1h_pct', 0):+.2f}%)")
+            else:
+                parts.append(f"  {k}: {v}")
+
+    if journal:
+        parts.append("")
+        parts.append("═══ RECENT JOURNAL (this symbol) ═══")
+        for j in journal[:5]:
+            parts.append(f"  {j.get('time', '?')}: {j.get('direction', '?')} "
+                         f"{j.get('r_multiple', 0):+.1f}R  "
+                         f"({j.get('reasoning_short', '')})")
+
+    # Event calendar block (kept for reference)
+    try:
+        event_ctx = get_event_context()
+        parts.append("")
+        parts.append("═══ EVENT CALENDAR ═══")
+        parts.append(f"Now: {event_ctx.get('now_utc', '?')}")
+        parts.append(f"Next event: {event_ctx.get('next_event', '?')} "
+                     f"in {event_ctx.get('minutes_until', '?')} min")
+        parts.append(f"Active event: {event_ctx.get('active_event', '?')} "
+                     f"({event_ctx.get('minutes_to_active', '?')} min)")
+        parts.append(f"in_pre_window: {event_ctx.get('in_pre_window', False)}, "
+                     f"in_post_window: {event_ctx.get('in_post_window', False)}, "
+                     f"blackout_active: {event_ctx.get('blackout_active', False)}")
+    except Exception:
+        pass
+
+    user_prompt = (
+        "Review the following trading setup and return your calibrated decision.\n\n"
+        + "\n".join(parts)
+        + "\n\nYour JSON:"
+    )
+
+    cfg_full = AgentConfig(
+        name=cfg.name,
+        provider_type=cfg.provider_type,
+        model=cfg.model,
+        system=META_CONTROLLER_SYSTEM,
+    )
+    result = await call_agent(cfg_full, user_prompt, max_tokens=512)
+    if "error" in result:
+        return {
+            "verdict": "pass",
+            "score": 0,
+            "size_modifier": 1.0,
+            "reasoning": f"Meta-controller call failed: {result['error']}",
+            "concerns": ["llm_call_failed"],
+            "key_factors": [],
+            "votes": [],
+            "consensus": "pass",
+            "consensus_confidence": 0.0,
+            "model": f"{cfg.provider_type}/{cfg.model}",
+            "latency_ms": result.get("latency_ms", 0),
+        }
+
+    parsed = _strip_json(result["text"])
+    if "error" in parsed:
+        verdict = "pass"
+        score = 0
+        size_mod = 1.0
+        reasoning = f"Could not parse meta-controller JSON: {parsed.get('raw', '')[:120]}"
+        concerns = ["json_parse_failed"]
+        key_factors: list[str] = []
+    else:
+        verdict = str(parsed.get("verdict", "pass")).lower()
+        if verdict not in {"approve", "modify", "reject", "pass"}:
+            verdict = "pass"
+        try:
+            score = max(0, min(100, int(parsed.get("score", 0))))
+        except (TypeError, ValueError):
+            score = 0
+        try:
+            size_mod = max(0.0, min(2.0, float(parsed.get("size_modifier", 1.0))))
+        except (TypeError, ValueError):
+            size_mod = 1.0
+        reasoning = str(parsed.get("reasoning", ""))[:600]
+        raw_concerns = parsed.get("concerns", []) or []
+        concerns = [str(c)[:120] for c in raw_concerns][:5] if isinstance(raw_concerns, list) else []
+        raw_factors = parsed.get("key_factors", []) or []
+        key_factors = [str(f)[:60] for f in raw_factors][:5] if isinstance(raw_factors, list) else []
+
+    # Enforce hard rules (defense-in-depth: even if the LLM said "approve",
+    # we don't let it override a low setup_score).
+    setup_score_val = (dscore or {}).get("score", 0) or 0
+    if verdict == "approve" and setup_score_val < 50:
+        verdict = "pass"
+        concerns = list(concerns) + [f"setup_score {setup_score_val} < 50, downgraded"]
+    if size_mod > 1.5:
+        wr = (dscore or {}).get("win_rate", 0) or 0
+        pf = (dscore or {}).get("profit_factor", 0) or 0
+        reg_match = (dscore or {}).get("regime_match", False)
+        if not (wr >= 0.65 and pf >= 2.0 and reg_match and not concerns):
+            size_mod = min(size_mod, 1.5)
+            concerns = list(concerns) + ["size_modifier capped at 1.5 by hard rule"]
+
+    return {
+        "verdict": verdict,
+        "score": score,
+        "size_modifier": round(size_mod, 2),
+        "reasoning": reasoning,
+        "concerns": concerns,
+        "key_factors": key_factors,
+        "votes": [
+            {
+                "agent": "Meta-Controller",
+                "verdict": verdict,
+                "confidence": score / 100.0,
+                "reasoning": reasoning,
+                "suggested_sl": None,
+                "suggested_tp": None,
+                "latency_ms": result.get("latency_ms", 0),
+            }
+        ],
+        "consensus": verdict,
+        "consensus_confidence": score / 100.0,
+        "model": f"{cfg.provider_type}/{cfg.model}",
+        "latency_ms": result.get("latency_ms", 0),
     }
 
 
