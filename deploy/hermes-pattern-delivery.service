@@ -1,4 +1,5 @@
 [Unit]
+PartOf=hermes-gateway.service
 Description=Resident Hermes sender for fresh Pattern research alerts
 After=network-online.target hermes-gateway.service
 Wants=network-online.target

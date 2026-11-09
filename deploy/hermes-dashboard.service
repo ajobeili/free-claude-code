@@ -16,6 +16,7 @@ Environment=PYTHONUNBUFFERED=1
 Environment=PATH=/opt/hermes/venv/bin:/usr/local/bin:/usr/bin:/bin
 UMask=0077
 Restart=always
+RestartPreventExitStatus=78
 RestartSec=10
 TimeoutStopSec=180
 MemoryHigh=250M

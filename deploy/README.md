@@ -11,6 +11,28 @@ Hermes conversations, research databases, and migration archives are excluded fr
 - Access uses SSH forwarding, with no new public dashboard listener.
 - Each service is enabled at boot and restarts automatically on failure.
 
+## Hermes updates
+
+Hermes uses the official NousResearch Git checkout on the stable release channel.
+The v0.23.0 installation lives at `/opt/hermes/source-v0.23.0`; `/opt/hermes/app`
+and `/opt/hermes/venv` are aliases for its source and managed environment.
+The source and environment belong to the `hermes` service account so the normal
+dashboard updater can fetch releases and synchronize dependencies. Persistent
+state stays in `/opt/hermes/home`; it is never committed to this repository.
+
+The gateway and dashboard use `RestartPreventExitStatus=78` for updater parking.
+The resident Pattern sender is `PartOf=hermes-gateway.service` and the gateway
+wants that sender, so gateway updates stop and restart both against the same
+source. `/etc/sudoers.d/hermes-update` permits the service account only the
+start, stop, restart, and reset-failed systemctl commands for these three Hermes
+units, with and without `--no-ask-password`. Validate that policy with `visudo`.
+
+Build the dashboard with the official workspace lockfile and Node 26 on a
+separate machine when staging memory is limited, then transfer only the compiled
+`hermes_cli/web_dist` product. Keep the previous source/environment and a private
+database backup before activation. Verify `hermes update --check`, dashboard HTTP,
+gateway startup, resident sender readiness, and database integrity after switching.
+
 Install `trading_server_runner.py` as `/opt/hermes/trading/server_runner.py` and run
 `uvicorn server_runner:app --host 127.0.0.1 --port 8081` from the Trading directory.
 The wrapper starts Pattern's existing streaming module during application startup,

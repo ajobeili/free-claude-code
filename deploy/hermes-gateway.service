@@ -1,7 +1,7 @@
 [Unit]
 Description=Hermes messaging gateway
 After=network-online.target
-Wants=network-online.target
+Wants=network-online.target hermes-pattern-delivery.service
 StartLimitIntervalSec=300
 StartLimitBurst=10
 
@@ -16,6 +16,7 @@ Environment=PYTHONUNBUFFERED=1
 Environment=PATH=/opt/hermes/venv/bin:/usr/local/bin:/usr/bin:/bin
 UMask=0077
 Restart=always
+RestartPreventExitStatus=78
 RestartSec=10
 TimeoutStopSec=180
 MemoryHigh=250M
