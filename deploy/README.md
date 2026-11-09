@@ -52,6 +52,14 @@ Install `trading_server_runner.py` as `/opt/hermes/trading/server_runner.py` and
 The wrapper starts Pattern's existing streaming module during application startup,
 preserving the application's normal initialization and shutdown handlers.
 
+Inactive pre-v0.23.0 source, its environment, and the temporary validation home
+are retained in the private `/opt/hermes/backups/installation-before-v0.23.0.tar.gz`
+archive. Every regular file was checked against its original before the expanded
+copies were removed. The pre-upgrade database snapshot is compressed at
+`/opt/hermes/deploy/state-before-v0.23.0.db.gz`. Duplicate deployment packages
+were removed only after their SHA-256 hashes matched the retained laptop copies.
+The active home, conversations, settings, and scheduled backups were preserved.
+
 Hermes remains responsible for Telegram credential checks and delivery. Trading's
 `PATTERN_HERMES_EXECUTABLE` points to `/opt/hermes/venv/bin/hermes`, with
 `HERMES_HOME=/opt/hermes/home`. Demo-only execution protections remain in the source.
