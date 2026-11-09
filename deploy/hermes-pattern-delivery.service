@@ -11,6 +11,7 @@ Group=hermes
 WorkingDirectory=/opt/hermes/app
 Environment=HOME=/opt/hermes/home
 Environment=HERMES_HOME=/opt/hermes/home
+Environment=HERMES_DISABLE_LAZY_INSTALLS=1
 Environment=PYTHONPATH=/opt/hermes/app
 Environment=PYTHONUNBUFFERED=1
 Environment=PATH=/opt/hermes/venv/bin:/usr/local/bin:/usr/bin:/bin

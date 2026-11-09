@@ -19,6 +19,10 @@ and `/opt/hermes/venv` are aliases for its source and managed environment.
 The source and environment belong to the `hermes` service account so the normal
 dashboard updater can fetch releases and synchronize dependencies. Persistent
 state stays in `/opt/hermes/home`; it is never committed to this repository.
+The service environment sets the supported `HERMES_DISABLE_LAZY_INSTALLS=1`:
+service startup uses the prepared environment and never installs packages or
+rebuilds frontends while the dashboard is coming online. Explicit updates still
+own dependency synchronization and must complete before restarting services.
 
 The gateway and dashboard use `RestartPreventExitStatus=78` for updater parking.
 The resident Pattern sender is `PartOf=hermes-gateway.service` and the gateway
