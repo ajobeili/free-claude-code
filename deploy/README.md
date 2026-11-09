@@ -38,6 +38,8 @@ units, with and without `--no-ask-password`. Validate that policy with `visudo`.
 Permit both exact spellings of each unit (`hermes-dashboard` and
 `hermes-dashboard.service`, likewise for the gateway and sender); the updater
 uses the shorter names for system-service restart checks.
+`configure_hermes_update_permissions.py` installs this exact policy as root and
+checks it with `visudo` and noninteractive sudo permission queries.
 
 Build the dashboard with the official workspace lockfile and Node 26 on a
 separate machine when staging memory is limited, then transfer only the compiled
