@@ -86,6 +86,10 @@ dev = [
 target-version = "py314"
 line-length = 88
 extend-exclude = ["release-build", "python-portable", ".uv-cache"]
+[tool.ruff.per-file-target-version]
+# This integration runs inside Hermes' existing Python 3.11 environment.
+"deploy/hermes_delivery_worker.py" = "py311"
+
 [tool.ruff.lint]
 select = [
     "E",    # pycodestyle errors

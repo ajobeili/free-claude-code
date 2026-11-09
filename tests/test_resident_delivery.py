@@ -1,5 +1,6 @@
 """Exercise resident request handling with fake Telegram transport only."""
 
+import ast
 import asyncio
 import json
 import runpy
@@ -15,6 +16,11 @@ from tools.pattern_trigger import PatternAlert
 DeliveryServer = runpy.run_path(
     str(Path(__file__).parents[1] / "deploy/hermes_delivery_worker.py")
 )["DeliveryServer"]
+
+
+def test_worker_syntax_supports_the_hermes_python_311_runtime():
+    source = Path(__file__).parents[1] / "deploy/hermes_delivery_worker.py"
+    ast.parse(source.read_text(encoding="utf-8"), feature_version=(3, 11))
 
 
 class Writer:

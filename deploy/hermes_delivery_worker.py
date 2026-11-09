@@ -46,7 +46,7 @@ class DeliveryServer:
                         }
             writer.write((json.dumps(result) + "\n").encode())
             await writer.drain()
-        except OSError, ValueError, TypeError, TimeoutError, RuntimeError:
+        except (OSError, ValueError, TypeError, TimeoutError, RuntimeError):
             pass
         finally:
             writer.close()
