@@ -25,3 +25,19 @@ the server snapshot passed SQLite integrity verification. Original Windows data 
 full migration archives were retained for rollback. Windows messaging launchers were
 backed up and made inactive before activating the server gateway, preventing duplicate
 Telegram polling. Original archives are private operational backups, not release assets.
+
+## Timely notifications
+
+`hermes-pattern-delivery.service` preloads Hermes once and accepts requests only
+on an owner-only Unix socket. The Trading service sets `PATTERN_HERMES_SOCKET`
+to `/opt/hermes/home/runtime/pattern-delivery.sock`. No bot token is copied into
+Trading and no additional public listener is created. The worker still calls
+Hermes' destination authorization and normal message delivery code.
+
+Quote delay plus local queue time must be below five seconds. Older signals
+remain research records and increment the visible stale-alert count. Requests
+that expire while waiting for the sender are rejected before delivery begins.
+Messages include an explicit UTC expiry time. Lost acknowledgments and network
+timeouts are not retried because the original message may already have arrived.
+Telegram acceptance and phone notification arrival are different events; this
+does not guarantee delivery latency, executable fills, or a profitable trade.

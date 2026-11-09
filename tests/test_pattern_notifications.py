@@ -110,8 +110,9 @@ def test_each_new_event_is_sent_once_and_delivery_outcome_is_reported(sent):
     async def run():
         notifier = PatternNotifier(True, "hermes", "telegram:test", sender)
         worker = asyncio.create_task(notifier.run())
-        notifier.enqueue(alert())
-        notifier.enqueue(alert())
+        fresh = replace(alert(), quote_delay_seconds=1, data_mode="RESEARCH")
+        notifier.enqueue(fresh)
+        notifier.enqueue(fresh)
         await asyncio.wait_for(notifier.drain(), 1)
         assert len(calls) == 1
         assert notifier.snapshot()["sent"] == int(sent)
@@ -156,7 +157,8 @@ def test_expired_queued_event_is_not_sent_late(monkeypatch):
         notifier.enqueue(alert())
         worker = asyncio.create_task(notifier.run())
         await asyncio.wait_for(notifier.drain(), 1)
-        assert notifier.snapshot()["failed"] == 1
+        assert notifier.snapshot()["stale"] == 1
+        assert notifier.snapshot()["failed"] == 0
         assert notifier.snapshot()["sent"] == 0
         worker.cancel()
         await asyncio.gather(worker, return_exceptions=True)

@@ -10,9 +10,11 @@ from collections import deque
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import asdict, dataclass, replace
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import TypedDict
 
+from tools.pattern_delivery import resident_ready, send_resident
 from tools.pattern_trigger import PatternAlert
 
 logger = logging.getLogger(__name__)
@@ -156,6 +158,9 @@ class NotificationState:
     sent: int = 0
     failed: int = 0
     last_sent_event: str | None = None
+    stale: int = 0
+    last_delivery_seconds: float | None = None
+    last_total_age_seconds: float | None = None
 
 
 class PatternNotifier:
@@ -165,17 +170,24 @@ class PatternNotifier:
         executable: str,
         target: str,
         sender: Callable[[str], Awaitable[bool]] | None = None,
+        socket_path: str = "",
     ):
         self._enabled = enabled and bool(executable) and target.startswith("telegram:")
         self._state = NotificationState(
             self._enabled,
-            "Ready — Hermes Telegram" if self._enabled else "Telegram alerts disabled",
+            "Preparing Telegram sender"
+            if self._enabled and socket_path
+            else "Ready — Hermes Telegram"
+            if self._enabled
+            else "Telegram alerts disabled",
         )
         self._queue: asyncio.Queue[tuple[PatternAlert, float]] = asyncio.Queue(
             maxsize=20
         )
         self._recent: deque[tuple[str, str]] = deque()
         self._seen: set[tuple[str, str]] = set()
+        self._socket_path = socket_path
+        self._target = target
 
         async def deliver(message: str) -> bool:
             return await send_via_hermes(executable, target, message)
@@ -183,7 +195,12 @@ class PatternNotifier:
         self._send = sender or deliver
 
     def snapshot(self) -> dict[str, object]:
-        return {**asdict(self._state), "pending": self._queue.qsize()}
+        return {
+            **asdict(self._state),
+            "pending": self._queue.qsize(),
+            "transport": "resident Hermes" if self._socket_path else "Hermes CLI",
+            "max_alert_age_seconds": 5,
+        }
 
     def enqueue(self, alert: PatternAlert) -> None:
         key = alert.epic, alert.trigger_time
@@ -206,17 +223,54 @@ class PatternNotifier:
 
     async def run(self) -> None:
         while True:
+            while self._socket_path and not await resident_ready(self._socket_path):
+                self._state = replace(
+                    self._state, status="Preparing Telegram sender; stale alerts expire"
+                )
+                await asyncio.sleep(1)
+            if self._socket_path and self._state.status.startswith("Preparing"):
+                self._state = replace(
+                    self._state, status="Ready — resident Hermes Telegram"
+                )
             alert, queued_at = await self._queue.get()
             try:
                 sent = False
-                if time.monotonic() - queued_at <= 60:
+                started = time.monotonic()
+                age = alert.quote_delay_seconds + max(0, started - queued_at)
+                if (
+                    not math.isfinite(age)
+                    or age >= 5
+                    or alert.data_mode == "DELAYED RESEARCH"
+                ):
+                    self._state = replace(
+                        self._state,
+                        status="Stale alert kept in history; Telegram entry alert suppressed",
+                        stale=self._state.stale + 1,
+                    )
+                    continue
+                expires = datetime.now(UTC) + timedelta(seconds=max(0, 5 - age))
+                message = format_alert(alert).replace(
+                    f"Delay {alert.quote_delay_seconds:.1f}s | signal prices",
+                    f"Quote age {age:.1f}s | expires {expires:%H:%M:%S} UTC",
+                )
+                if self._socket_path:
+                    deadline = queued_at + 5 - alert.quote_delay_seconds
+                    sent = await send_resident(
+                        self._socket_path, self._target, message, deadline
+                    )
+                else:
                     try:
-                        sent = await self._send(format_alert(alert))
+                        sent = await self._send(message)
                     except OSError, ValueError, RuntimeError:
                         sent = False
+                total_age = alert.quote_delay_seconds + max(
+                    0, time.monotonic() - queued_at
+                )
                 self._state = replace(
                     self._state,
-                    status="Last alert sent through Hermes Telegram"
+                    status="Delivered after expiry — do not use for entry"
+                    if sent and total_age >= 5
+                    else "Last alert sent through Hermes Telegram"
                     if sent
                     else "Telegram delivery failed or expired; not retried to avoid duplicates",
                     sent=self._state.sent + int(sent),
@@ -224,6 +278,8 @@ class PatternNotifier:
                     last_sent_event=alert.trigger_time
                     if sent
                     else self._state.last_sent_event,
+                    last_delivery_seconds=time.monotonic() - started,
+                    last_total_age_seconds=total_age,
                 )
             finally:
                 self._queue.task_done()

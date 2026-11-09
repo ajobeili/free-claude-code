@@ -1,0 +1,27 @@
+[Unit]
+Description=Resident Hermes sender for fresh Pattern research alerts
+After=network-online.target hermes-gateway.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hermes
+Group=hermes
+WorkingDirectory=/opt/hermes/app
+Environment=HOME=/opt/hermes/home
+Environment=HERMES_HOME=/opt/hermes/home
+Environment=PYTHONPATH=/opt/hermes/app
+Environment=PYTHONUNBUFFERED=1
+Environment=PATH=/opt/hermes/venv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/opt/hermes/venv/bin/python /opt/hermes/hermes_delivery_worker.py --socket /opt/hermes/home/runtime/pattern-delivery.sock --trading-root /opt/hermes/trading
+Restart=always
+RestartSec=5
+TimeoutStopSec=15
+UMask=0077
+MemoryHigh=180M
+MemoryMax=300M
+CPUQuota=60%
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

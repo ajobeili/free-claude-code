@@ -229,7 +229,7 @@ function display(state){
   document.getElementById('notice').textContent=state.error||'';
   const delivery=state.notifications;
   journalDisplay(state.journal);
-  document.getElementById('notifications').textContent=delivery && delivery.enabled?'Telegram via Hermes · '+delivery.status+' · '+delivery.sent+' messages sent'+(delivery.failed?' · '+delivery.failed+' failed':''):'Telegram messages are not set up';
+  document.getElementById('notifications').textContent=delivery && delivery.enabled?'Telegram via Hermes · '+delivery.status+' · '+delivery.sent+' messages sent'+(delivery.failed?' · '+delivery.failed+' failed':'')+(delivery.stale?' · '+delivery.stale+' stale alerts suppressed':'')+(Number.isFinite(delivery.last_delivery_seconds)?' · Last send '+delivery.last_delivery_seconds.toFixed(2)+'s · Total quote age '+delivery.last_total_age_seconds.toFixed(2)+'s':''):'Telegram messages are not set up';
   stamp.textContent=state.last_quote?'Last price update: '+localTime(state.last_quote)+' (your local time)':'';
   markets.replaceChildren();
   for(const market of state.markets||[]){

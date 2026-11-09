@@ -40,6 +40,7 @@ class Settings:
     pattern_telegram_enabled: bool = False
     pattern_telegram_target: str = ""
     pattern_hermes_executable: str = "hermes"
+    pattern_hermes_socket: str = ""
     pattern_evaluation_store: str = str(
         _Path(__file__).with_name(".pattern_evaluation.sqlite3")
     )
@@ -65,6 +66,7 @@ def get_settings() -> Settings:
         in ("1", "true", "yes"),
         pattern_telegram_target=os.environ.get("PATTERN_TELEGRAM_TARGET", ""),
         pattern_hermes_executable=os.environ.get("PATTERN_HERMES_EXECUTABLE", "hermes"),
+        pattern_hermes_socket=os.environ.get("PATTERN_HERMES_SOCKET", ""),
         pattern_evaluation_store=os.environ.get(
             "PATTERN_EVALUATION_STORE",
             str(_Path(__file__).with_name(".pattern_evaluation.sqlite3")),

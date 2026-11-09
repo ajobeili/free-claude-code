@@ -1263,6 +1263,7 @@ _PATTERN_NOTIFIER = PatternNotifier(
     _notification_settings.pattern_telegram_enabled,
     shutil.which(_notification_settings.pattern_hermes_executable) or "",
     _notification_settings.pattern_telegram_target,
+    socket_path=_notification_settings.pattern_hermes_socket,
 )
 
 
