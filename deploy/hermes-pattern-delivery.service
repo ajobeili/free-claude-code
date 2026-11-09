@@ -11,11 +11,11 @@ Group=hermes
 WorkingDirectory=/opt/hermes/app
 Environment=HOME=/opt/hermes/home
 Environment=HERMES_HOME=/opt/hermes/home
-Environment=HERMES_DISABLE_LAZY_INSTALLS=1
+Environment=HERMES_SUPERVISED_CHILD=1
 Environment=PYTHONPATH=/opt/hermes/app
 Environment=PYTHONUNBUFFERED=1
 Environment=PATH=/opt/hermes/venv/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/opt/hermes/venv/bin/python /opt/hermes/hermes_delivery_worker.py --socket /opt/hermes/home/runtime/pattern-delivery.sock --trading-root /opt/hermes/trading
+ExecStart=/opt/hermes/venv/bin/python /opt/hermes/hermes_worker_launcher.py --socket /opt/hermes/home/runtime/pattern-delivery.sock --trading-root /opt/hermes/trading
 Restart=always
 RestartSec=5
 TimeoutStopSec=15

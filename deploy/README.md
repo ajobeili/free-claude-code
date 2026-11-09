@@ -15,14 +15,19 @@ Hermes conversations, research databases, and migration archives are excluded fr
 
 Hermes uses the official NousResearch Git checkout on the stable release channel.
 The v0.23.0 installation lives at `/opt/hermes/source-v0.23.0`; `/opt/hermes/app`
-and `/opt/hermes/venv` are aliases for its source and managed environment.
+aliases that source and `/opt/hermes/venv` aliases `/opt/hermes/runtime-v0.23.0`.
+That bootstrap environment uses Hermes' official Python 3.14 runtime. The CLI
+activates the current PM dependency generation under the private home.
 The source and environment belong to the `hermes` service account so the normal
 dashboard updater can fetch releases and synchronize dependencies. Persistent
 state stays in `/opt/hermes/home`; it is never committed to this repository.
-The service environment sets the supported `HERMES_DISABLE_LAZY_INSTALLS=1`:
-service startup uses the prepared environment and never installs packages or
-rebuilds frontends while the dashboard is coming online. Explicit updates still
-own dependency synchronization and must complete before restarting services.
+The service environment sets the supported `HERMES_SUPERVISED_CHILD=1`: an
+update's frontend completion belongs to the updater instead of every supervised
+service startup. Prepare the PM dependency environment and tools before launch.
+The resident sender's launcher selects and activates that committed environment,
+then disables lazy CLI re-entry inside the worker. Install that launcher beside
+`hermes_delivery_worker.py`. Telegram is enabled as the bundled
+`platforms/telegram` plugin after migration from the older core adapter.
 
 The gateway and dashboard use `RestartPreventExitStatus=78` for updater parking.
 The resident Pattern sender is `PartOf=hermes-gateway.service` and the gateway
