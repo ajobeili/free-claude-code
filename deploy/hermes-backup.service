@@ -1,0 +1,19 @@
+[Unit]
+Description=Private Hermes history and configuration backup
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=hermes
+Group=hermes
+WorkingDirectory=/opt/hermes/app
+Environment=HOME=/opt/hermes/home
+Environment=HERMES_HOME=/opt/hermes/home
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/hermes/venv/bin/hermes backup --output /opt/hermes/backups --keep 7
+UMask=0077
+Nice=15
+CPUQuota=25%
+MemoryHigh=180M
+MemoryMax=350M
+TimeoutStartSec=600

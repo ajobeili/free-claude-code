@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily private Hermes backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=600
+Unit=hermes-backup.service
+
+[Install]
+WantedBy=timers.target

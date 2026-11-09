@@ -1,0 +1,29 @@
+[Unit]
+Description=Hermes messaging gateway
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=hermes
+Group=hermes
+WorkingDirectory=/opt/hermes/app
+Environment=HOME=/opt/hermes/home
+Environment=HERMES_HOME=/opt/hermes/home
+Environment=PYTHONUNBUFFERED=1
+Environment=PATH=/opt/hermes/venv/bin:/usr/local/bin:/usr/bin:/bin
+UMask=0077
+Restart=always
+RestartSec=10
+TimeoutStopSec=180
+MemoryHigh=250M
+MemoryMax=450M
+MemorySwapMax=1G
+CPUQuota=70%
+Nice=5
+ExecStart=/opt/hermes/venv/bin/hermes gateway run --external-supervisor
+
+[Install]
+WantedBy=multi-user.target
