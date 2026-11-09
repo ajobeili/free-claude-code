@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gold & oil · Pattern watch</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{font:17px/1.6 system-ui;background:#0d1521;color:#edf3fc;max-width:1120px;margin:32px auto;padding:0 24px}a{color:#a9d5ff;text-underline-offset:4px}h1{font-size:clamp(30px,5vw,44px);line-height:1.15;margin:12px 0}h2{font-size:23px;line-height:1.35}h3{font-size:18px}.eyebrow{font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#a6b9d1}.intro{color:#b9c9dc;max-width:680px;margin-bottom:28px}.hero{background:#17283a;border-color:#3e6477}.status{font-size:clamp(24px,4vw,32px);line-height:1.3;margin:12px 0;color:#a6efd4;font-weight:650}.hero[data-tone="warning"] .status{color:#ffda98}small,.muted{color:#b9c9dc}small{font-size:14px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}section{background:#152132;border:1px solid #35465d;border-radius:18px;padding:24px;margin:16px 0}section h2{margin:0 0 10px}.grid section{margin:0}.price{font-size:32px;font-weight:650;font-variant-numeric:tabular-nums;margin:10px 0}.phase{color:#a6efd4;font-weight:600}.range{color:#b9c9dc;font-size:15px}dl{display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:15px}dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.alert{border-color:#b59a61;background:#28291f}.badge{font-size:13px;color:#ffda98}#dataMode:not(:empty),#notice:not(:empty){background:#302b20;border-left:3px solid #e7bd72;padding:12px 16px;border-radius:6px;color:#ffda98}#notice:empty,#dataMode:empty{display:none}#notifications{font-size:15px}#stamp{display:block}.steps{padding-left:24px}.steps li{margin:12px 0}details{border-top:1px solid #35465d;padding:18px 0}summary{cursor:pointer;font-weight:600;font-size:18px;min-height:32px}summary:hover{color:#a9d5ff}summary:focus-visible,a:focus-visible{outline:3px solid #a9d5ff;outline-offset:5px}details p{max-width:900px}.empty{padding:28px;border:1px dashed #52647c;border-radius:16px;margin:16px 0 28px}.empty h3{margin:0 0 8px}.empty p{margin:0;color:#b9c9dc}.downloads{display:flex;flex-wrap:wrap;gap:14px}table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:12px;text-align:left;border-bottom:1px solid #35465d;white-space:nowrap}footer{margin:28px 0 36px;color:#b9c9dc;font-size:14px}.section-title{margin-top:32px;margin-bottom:6px}#journalCounts{color:#b9c9dc}@media(max-width:640px){body{margin:20px auto;padding:0 16px}.grid{grid-template-columns:1fr;gap:14px}section{padding:20px;border-radius:14px}.price{font-size:28px}dl{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}h2{font-size:21px}}
+</style>
+<style>
+.record-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:18px 0}button,select{font:inherit;color:inherit;background:#20334a;border:1px solid #6d819b;border-radius:8px;padding:9px 14px;max-width:100%}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}button:focus-visible,select:focus-visible{outline:3px solid #a9d5ff;outline-offset:3px}.record-table-wrap{max-width:100%;overflow-x:auto;border:1px solid #35465d;border-radius:10px}#recordList{margin:0}#recordList thead{background:#20334a}#recordList tbody tr:nth-child(even){background:#19283b}#recordList tbody tr:hover{background:#243850}#recordList td,#recordList th{vertical-align:top;font-variant-numeric:tabular-nums}
+</style>
+<style>.alert h2{margin:0 0 8px}.alert-levels{max-width:460px;grid-template-columns:minmax(120px,1fr) minmax(0,1fr);gap:8px 20px;font-size:17px;margin:16px 0}.alert-levels dd{text-align:left;font-size:20px;font-weight:650}</style>
+<a href="/">← All apps</a>
+<header><p class="eyebrow">Demo account · Automatic monitoring</p><h1>Gold & oil pattern watch</h1><p class="intro">We watch for a price move that quickly turns back. You can follow the progress here and receive a Telegram message when all the rules match.</p></header>
+<section class="hero" id="scannerStatus" aria-label="Scanner status"><span class="eyebrow">1 · Is it working?</span>
+<p id="feed" role="status">Connecting to the demo feed…</p>
+<p id="trigger" class="status" role="status">Waiting for demo connection</p>
+<p id="dataMode" role="status"></p>
+<p id="notifications" role="status">Telegram alerts not configured</p>
+<p id="notice" role="status"></p><small id="stamp"></small>
+<p id="attemptProgress" class="muted" role="status">Checking saved attempt history…</p>
+</section>
+<h2 class="section-title">2 · What are we watching?</h2><p class="muted">Gold and crude oil are monitored independently. Each chart uses only its own prices and history.</p>
+<div id="markets" class="grid"></div>
+<h2 class="section-title">3 · Recorded alerts</h2><p id="alertHistoryNote" class="muted">Recorded alert history · newest first. Past events, not current entry instructions.</p><div id="empty" class="empty"><h3>No fully matched alert yet</h3><p>A detected move becomes an alert only when every rule passes. Recent attempts and their results appear below.</p></div><div id="alerts"></div>
+<section aria-label="Recent detected attempts"><h2>Recent detected attempts</h2><p id="detectedAttemptCounts" role="status">Loading saved attempts…</p><p class="muted">A detected attempt is a price move being checked. A fully matched alert passes every rule. Rejected attempts stay visible here and do not send Telegram alerts.</p><div class="record-table-wrap" role="region" aria-label="Recent attempts table" tabindex="0"><table id="detectedAttempts" aria-label="Recent detected attempts"></table></div><p class="muted">Latest 8 attempts, newest first. The complete list remains in Research journal &amp; results → Browse saved records.</p></section>
+<details><summary>How does this pattern work?</summary><ol class="steps"><li><strong>Watch the usual price area.</strong> We use the highest and lowest prices from the last 20 completed one-minute price bars.</li><li><strong>Look for a move outside that area.</strong> The move must exceed twice the buy/sell price gap (the spread).</li><li><strong>Watch for a quick return.</strong> That market must return inside its own range within 90 seconds. Each market is checked independently.</li></ol><p>A match creates a research alert for a possible reversal. It does not predict a certain price move. Price updates trigger the checks; the scanner does not wait for a candle to close.</p></details>
+<details><summary>Research journal & results</summary><section aria-label="Research journal"><h2>What the scanner has recorded</h2>
+<p id="journalStatus" role="status">Journal starting…</p><p id="journalCounts"></p>
+<p class="muted">We save each attempt, including those that fail the rules. After price returns inside the range, we measure what happens 1, 3 and 5 minutes later. Missing price data makes a measurement incomplete.</p>
+<div id="journalRecent"></div><div style="overflow-x:auto" id="journalMarkouts"></div>
+<details id="recordBrowser" open><summary>Browse saved records</summary>
+<p>Read the saved evidence here. Choose a list below; downloading is optional.</p>
+<div class="record-controls"><label for="recordKind">Show</label><select id="recordKind"><option value="attempts">Pattern attempts</option><option value="outcomes">What happened afterward</option><option value="quotes">Saved prices</option><option value="ranges">Recent price areas</option><option value="gaps">Recording interruptions</option><option value="runs">Recording sessions & rules</option></select><button id="recordRefresh" type="button">Refresh list</button><a id="recordDownload" href="/api/pattern/journal/attempts.csv">Download attempts CSV</a></div>
+<p id="recordStatus" role="status">Open the journal to load saved records.</p>
+<div class="record-controls"><button id="recordPrevious" type="button" disabled>Previous 25</button><button id="recordNext" type="button" disabled>Next 25</button></div>
+<div class="record-table-wrap" role="region" aria-label="Saved records table" tabindex="0"><table id="recordList" aria-label="Saved records"></table></div></details>
+<small>These numbers are price changes, not account profits. They include the quoted buy/sell gap but exclude commissions, execution differences and holding costs. Averages use complete measurements from the current rules and error-free recordings. Both groups use the same starting conditions; this is not an independent strategy comparison.</small></section></details>
+<details><summary>Connection details & broker login</summary><p>Keep this app active and the server running. A disconnect cancels pending price moves. After reconnecting, a new observation inside the range is required. Repeat messages for one market are suppressed for 90 seconds.</p><p>Prices are the midpoint between Capital.com's buy and sell quotes. Monitoring accepts delays up to 30 seconds and labels delays above 5 seconds. Each market has its own price freshness and history checks. This page keeps the latest 20 alerts for this server run.</p><p><a href="/workbench">Open broker login</a></p></details>
+<section id="evaluation" aria-label="Pattern research evaluation">
+<p class="eyebrow">4 · Why did it not match?</p><h2>Activity & pattern comparisons</h2>
+<p id="operatingRules">Current rules: each market is monitored independently.</p><p id="evaluationStatus" role="status">Loading research activity…</p><p id="evaluationCursor" class="muted"></p><p id="evaluationLatest"></p><p id="evaluationLimitations" class="muted"></p>
+<p id="comparisonStatus" role="status">Checking whether a comparison report is available…</p><p id="comparisonIdentity" class="muted"></p><details id="comparisonMetadata" hidden><summary>Saved report identity & evidence limits</summary><dl id="comparisonMetadataFields"></dl></details>
+<p class="muted">Current monitoring checks each market independently. Older saved research may use earlier rules and is historical evidence only. More matches alone do not establish an effective pattern.</p>
+<div class="record-table-wrap" role="region" aria-label="Eight pattern groups" tabindex="0"><table id="evaluationGroups" aria-label="Pattern comparison groups"></table></div>
+<div class="record-table-wrap" role="region" aria-label="Evidence decisions" tabindex="0"><table id="evaluationDecisions" aria-label="Pattern evidence decisions"></table></div>
+<div class="record-controls"><label for="evaluationSource">Evidence</label><select id="evaluationSource"><option value="diagnostics">Current scanner activity</option><option value="report">Saved comparison report</option></select><label for="evaluationKind">Evidence list</label><select id="evaluationKind"><option value="stages">Why checks stopped</option><option value="coverage">Usable price coverage</option><option value="attempts">Pattern attempts</option><option value="followups">Movement after a return</option><option value="late_returns">Returns after expiry</option><option value="groups">Comparison groups</option></select></div>
+<div class="record-controls"><label for="evaluationMarket">Market</label><select id="evaluationMarket"><option value="">Both markets</option><option value="GOLD">Gold</option><option value="OIL_CRUDE">Crude oil</option></select><label for="evaluationVariant">Pattern rule</label><select id="evaluationVariant"><option value="">All rules</option><option value="confirmed-90">Earlier paired rule (historical)</option><option value="unfiltered-90">90 seconds, one market</option><option value="confirmed-180">180 seconds + other market</option><option value="unfiltered-180">180 seconds, one market</option></select><label for="evaluationPhase">Data phase</label><select id="evaluationPhase"><option value="">All phases</option><option value="development">Development (inspected data)</option><option value="validation">Validation (frozen new data)</option></select></div>
+<div class="record-controls"><button id="evaluationRefresh" type="button">Refresh evidence</button><a id="evaluationDownload" hidden>Download selected list CSV</a></div>
+<p id="evaluationListStatus" role="status">Activity tables are available after new evidence is recorded.</p><div class="record-controls"><button id="evaluationPrevious" type="button" disabled>Previous evidence page</button><button id="evaluationNext" type="button" disabled>Next evidence page</button></div>
+<div class="record-table-wrap" role="region" aria-label="Research evidence table" tabindex="0"><table id="evaluationRecords" aria-label="Research evidence"></table></div>
+<p class="muted">Movement is measured in price points, using the quoted buy and sell sides. It is not account profit. The 3-minute result is the primary measurement; 1 and 5 minutes are descriptive. Missing data, sessions, costs or execution evidence prevents a reliable conclusion. Late returns never change an expired result or send a retrospective message.</p>
+</section>
+<dialog id="recordDialog" aria-labelledby="recordDialogTitle"><div class="detail-heading"><h2 id="recordDialogTitle">Record details</h2><button type="button" id="recordDialogClose">Close details</button></div><p class="muted">Saved evidence for this record. Times use your local time zone.</p><dl id="recordDialogFields"></dl></dialog>
+<style>
+#recordDialog{color:#edf3fc;background:#152132;border:1px solid #6d819b;border-radius:16px;padding:24px;width:min(720px,calc(100% - 32px));max-width:calc(100% - 32px);max-height:85dvh;overflow-y:auto;box-sizing:border-box}#recordDialog::backdrop{background:#050b14bd}.detail-heading{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}.detail-heading h2{margin:0}#recordDialogFields{display:block;margin:0;font-size:16px}#recordDialogFields dt{color:#b9c9dc;margin-top:18px;font-weight:600}#recordDialogFields dd{margin:4px 0 0;text-align:left;white-space:pre-wrap;overflow-wrap:anywhere;padding-bottom:14px;border-bottom:1px solid #35465d;line-height:1.6}#recordList button{font-size:14px;white-space:nowrap;padding:6px 10px}#evaluation{min-width:0}#comparisonIdentity,#evaluationLimitations,#evaluationLatest,#evaluationCursor{overflow-wrap:anywhere}#evaluation .record-table-wrap{margin:16px 0}#evaluationRecords td,#evaluationGroups td,#evaluationDecisions td{vertical-align:top}#evaluationRecords button,#evaluationGroups button,#evaluationDecisions button{font-size:14px;white-space:nowrap;padding:6px 10px}
+</style>
+<footer>Research only · No automatic trades · This pattern has not yet been shown to be profitable.</footer>
+<script src="/module_activity.js"></script>
+<script>
+const feed=document.getElementById('feed'),trigger=document.getElementById('trigger'),stamp=document.getElementById('stamp'),markets=document.getElementById('markets'),alerts=document.getElementById('alerts');
+let events;
+function text(parent,tag,value){const el=document.createElement(tag);el.textContent=value;parent.append(el);return el}
+function number(value){return typeof value==='number' && Number.isFinite(value)?value.toLocaleString(undefined,{maximumFractionDigits:5}):'Unavailable'}
+function localTime(value){const date=new Date(value);return value && !Number.isNaN(date.getTime())?date.toLocaleString(undefined,{dateStyle:'medium',timeStyle:'medium'}):value||'Not received yet'}
+function seconds(value){return typeof value==='number' && Number.isFinite(value)?Math.round(value).toLocaleString():'unknown'}
+function row(list,label,value){text(list,'dt',label);text(list,'dd',value)}
+const recordDialog=document.getElementById('recordDialog');
+document.getElementById('recordDialogClose').addEventListener('click',()=>recordDialog.close());
+function showRecordDetails(columns,values,index){
+  document.getElementById('recordDialogTitle').textContent='Record '+index+' details';
+  const fields=document.getElementById('recordDialogFields');fields.replaceChildren();
+  const labels={id:'Record identifier',run_id:'Recording session identifier',sign:'Original move',range_high:'Price area high',range_low:'Price area low',breakout_price:'Price outside the area',other_start:'Other market price at start',other_end:'Other market price at end',ended:'Finished',manifest:'Saved rules and settings'};
+  columns.forEach((key,column)=>{
+    let value=recordValue(key,values[column]);
+    if(key==='sign')value=values[column]===1?'Above the price area':values[column]===-1?'Below the price area':value;
+    if(key==='manifest'){try{value=JSON.stringify(JSON.parse(values[column]),null,2)}catch(error){}}
+    row(fields,recordLabels[key]||labels[key]||key.replaceAll('_',' '),value);
+  });
+  recordDialog.showModal();
+}
+const recordKind=document.getElementById('recordKind'),recordStatus=document.getElementById('recordStatus'),recordList=document.getElementById('recordList'),recordPrevious=document.getElementById('recordPrevious'),recordNext=document.getElementById('recordNext');
+let recordOffset=0,recordRequest=0,recordLoaded=false;
+const recordFields={attempts:['epic','started','outcome','reason'],outcomes:['epic','reversal_direction','horizon','status','change_points','reason'],quotes:['epic','event_time','bid','offer','quality'],ranges:['epic','event_time','high','low'],gaps:['observed_host_utc','reason'],runs:['started','quotes','recording_error','dropped']};
+const recordLabels={epic:'Market',started:'Started',event_time:'Price time',received_time:'Received',bid:'Sell price',offer:'Buy price',outcome:'Pattern result',reason:'Explanation',horizon:'Follow-up time',change_points:'Price change (points)',status:'Measurement status',high:'Area high',low:'Area low',observed_host_utc:'Interruption time',quality:'Price freshness',reversal_direction:'Possible direction',quotes:'Prices saved',recording_error:'Recording problem',dropped:'Records lost'};
+function recordValue(key,value){
+  if(value===null||value==='')return '—';
+  if(key==='epic')return value==='OIL_CRUDE'?'Crude oil':value==='GOLD'?'Gold':String(value);
+  if(key==='horizon')return number(value/60)+' minutes';
+  if(key.endsWith('_time')||['started','ended','observed_host_utc'].includes(key))return localTime(value);
+  const words={qualified:'All rules matched',context_failed:'Other market did not confirm',expired:'Return took too long',interrupted:'Data interrupted',open:'Still watching',pending:'Waiting for follow-up',complete:'Complete',incomplete:'Incomplete',delayed_research:'Delayed research prices',UP:'Upward',DOWN:'Downward'};
+  return words[value]|| (typeof value==='number'?number(value):String(value));
+}
+async function loadRecords(offset=0){
+  const request=++recordRequest,kind=recordKind.value;
+  recordLoaded=true;recordOffset=offset;recordPrevious.disabled=true;recordNext.disabled=true;
+  recordStatus.textContent='Loading saved records…';recordList.replaceChildren();
+  const download=document.getElementById('recordDownload');download.href='/api/pattern/journal/'+kind+'.csv';download.textContent='Download '+kind+' CSV';
+  try{
+    const response=await fetch('/api/pattern/journal/'+kind+'.json?offset='+offset,{cache:'no-store'});
+    if(!response.ok)throw new Error('records');
+    const data=await response.json();if(request!==recordRequest)return;
+    if(!Array.isArray(data.columns)||!Array.isArray(data.rows))throw new Error('records');
+    recordStatus.textContent=data.rows.length?'Showing records '+(offset+1)+'–'+(offset+data.rows.length)+'. Times use your local time zone. Refresh to include new records.':'No saved records in this list yet.';
+    const fields=recordFields[kind].filter(key=>data.columns.includes(key));
+    const head=document.createElement('thead');recordList.append(head);
+    const headings=document.createElement('tr');head.append(headings);
+    for(const label of ['Record',...fields.map(key=>recordLabels[key]||key),'Details'])text(headings,'th',label).scope='col';
+    const body=document.createElement('tbody');recordList.append(body);
+    data.rows.forEach((values,index)=>{
+      const item=document.createElement('tr');body.append(item);text(item,'th',String(offset+index+1)).scope='row';
+      for(const key of fields)text(item,'td',recordValue(key,values[data.columns.indexOf(key)]));
+      const cell=document.createElement('td');item.append(cell);
+      const button=text(cell,'button','View details');button.type='button';
+      button.addEventListener('click',()=>showRecordDetails(data.columns,values,offset+index+1));
+    });
+    recordPrevious.disabled=offset===0;recordNext.disabled=!data.has_more;
+  }catch(error){if(request!==recordRequest)return;recordStatus.textContent='Could not load saved records. Check the connection and select Refresh list to try again.';recordPrevious.disabled=offset===0}
+}
+recordKind.addEventListener('change',()=>loadRecords());
+document.getElementById('recordRefresh').addEventListener('click',()=>loadRecords());
+recordPrevious.addEventListener('click',()=>loadRecords(Math.max(0,recordOffset-25)));
+recordNext.addEventListener('click',()=>loadRecords(recordOffset+25));
+document.querySelector('section[aria-label="Research journal"]').parentElement.addEventListener('toggle',event=>{if(event.target.open&&!recordLoaded)loadRecords()});
+function journalDisplay(journal){
+  const status=document.getElementById('journalStatus'),recent=document.getElementById('journalRecent'),marks=document.getElementById('journalMarkouts');
+  if(!journal){status.textContent='Journal starting…';return}
+  const progress=document.getElementById('attemptProgress'),latest=(journal.recent||[])[0];
+  progress.textContent=number(journal.attempts)+' price moves checked · '+number(journal.qualified)+' matched all rules.';
+  if(latest){
+    const result={open:'still being checked (up to 90 seconds)',qualified:'matched all rules',context_failed:'the other market did not confirm',expired:'expired — price did not return within 90 seconds',interrupted:'interrupted by a data gap'}[latest.outcome]||latest.outcome;
+    progress.textContent+=' Latest attempt: '+(latest.epic==='OIL_CRUDE'?'Crude oil':'Gold')+' at '+localTime(latest.started)+' — '+result+'.';
+  }
+  status.textContent=journal.error|| (journal.running?'Recording automatically · '+number(journal.quotes)+' quotes saved':'Journal unavailable');
+  document.getElementById('journalCounts').textContent=number(journal.attempts)+' attempts · '+number(journal.qualified)+' matched all rules · '+number(journal.complete_outcomes)+' completed follow-ups · '+number(journal.incomplete_outcomes)+' incomplete · '+number(journal.pending_outcomes)+' waiting for follow-up · '+number(journal.dropped)+' records lost';
+  document.getElementById('detectedAttemptCounts').textContent=number(journal.attempts)+' detected attempts · '+number(journal.qualified)+' fully matched alerts'+(journal.error?' · Recording needs attention: '+journal.error:'');
+  const attemptTable=document.getElementById('detectedAttempts');attemptTable.replaceChildren();
+  const attemptHead=document.createElement('thead'),attemptLabels=document.createElement('tr');attemptHead.append(attemptLabels);attemptTable.append(attemptHead);
+  for(const label of ['Started (your local time)','Market','Result','Explanation','Rules']){const cell=text(attemptLabels,'th',label);cell.scope='col'}
+  const attemptBody=document.createElement('tbody');attemptTable.append(attemptBody);
+  for(const item of journal.recent||[]){const line=document.createElement('tr');attemptBody.append(line);for(const value of [localTime(item.started),item.epic==='OIL_CRUDE'?'Crude oil':'Gold',recordValue('outcome',item.outcome),item.reason||'Waiting for a return inside the range',item.rule_version==='independent-rejection-v2'?'Independent market':item.rule_version?'Earlier paired rules':'Earlier record'])text(line,'td',value)}
+  if(!(journal.recent||[]).length){const line=document.createElement('tr');attemptBody.append(line);const cell=text(line,'td','No attempt recorded yet.');cell.colSpan=5}
+  recent.replaceChildren();marks.replaceChildren();
+  for(const item of journal.recent||[]){text(recent,'p',item.epic+' · '+({open:'Still watching',qualified:'All rules matched',context_failed:'Other market did not confirm',expired:'Return took too long',interrupted:'Data interrupted'}[item.outcome]||item.outcome)+' · '+item.reason+' · '+localTime(item.started))}
+  if(!(journal.markouts||[]).length){text(marks,'p','Results will appear after price returns inside the range and we have enough uninterrupted price data.');return}
+  const table=document.createElement('table');table.style.width='100%';table.style.borderSpacing='10px';marks.append(table);
+  const header=document.createElement('tr');table.append(header);
+  for(const label of ['Market','After','All returns','Rule matches','Average move: all (points)','Average move: matches (points)'])text(header,'th',label);
+  for(const item of journal.markouts){const tr=document.createElement('tr');table.append(tr);for(const value of [item.epic,(item.seconds/60)+' min',item.observations,item.qualified_observations,number(item.mean_change_points),number(item.qualified_mean_change_points)])text(tr,'td',value)}
+}
+const evaluationLabels={market:'Market',variant:'Pattern rule',phase:'Data phase',starts:'Moves outside range',matches:'Matches',expired:'Expired',context_failed:'Other market did not confirm',target_hours:'Usable target hours',paired_hours:'Usable paired hours',count:'Checks',reason:'Explanation',state:'Check result',unit:'Counting unit',stage:'Check',primary_reason:'Main reason',started:'Started',observed_time:'Observed locally',deadline:'Return deadline',ended:'Finished',return_time:'Return time',outcome:'Pattern result',horizon_seconds:'Follow-up seconds',status:'Measurement status',points:'Price movement (points)',normal_mean:'Average after measured costs',doubled_mean:'Average with doubled costs',decision:'Evidence decision',limit_seconds:'Time allowed (seconds)',complete_measurements:'Complete follow-ups',incomplete_measurements:'Incomplete follow-ups',seconds:'Usable seconds',paired:'Needs both markets',start:'Coverage begins',end:'Coverage ends',mean_lower:'Lower mean bound',improvement_lower:'Lower improvement bound',comparison:'Comparison',failed_gates:'Missing requirements'};
+const evaluationSource=document.getElementById('evaluationSource'),evaluationKind=document.getElementById('evaluationKind'),evaluationList=document.getElementById('evaluationRecords'),evaluationListStatus=document.getElementById('evaluationListStatus');
+let evaluationSummary=null,evaluationRevision=null,evaluationReport=null,evaluationOffset=0,evaluationRequest=0;
+function evaluationValue(key,value){
+  if(value===null||value===undefined||value==='')return 'Unavailable';
+  if(typeof value==='object')return JSON.stringify(value,null,2);
+  if(['started','ended','deadline','return_time','observed_time','start','end','due','exit_time','first_return_time'].includes(key))return localTime(value);
+  if(typeof value==='boolean')return value?'Yes':'No';
+  const words={GOLD:'Gold',OIL_CRUDE:'Crude oil','confirmed-90':'Earlier paired rule (historical)','unfiltered-90':'90s, one market','confirmed-180':'180s + other market','unfiltered-180':'180s, one market',eligible:'Passed',failed:'Stopped here',unknown:'Unknown',insufficient:'Insufficient evidence',inconclusive:'Uncertain — more research needed',promising:'Promising for further demo research',rejected:'Does not support improvement',matched:'All rules matched',context_failed:'Other market did not confirm',expired:'Return took too long',interrupted:'Data interrupted',open:'Still watching',development:'Development (inspected)',validation:'Validation (frozen data)',no_observed_return:'No return observed in complete window'};
+  return words[value]||recordValue(key,value);
+}
+function evaluationTable(table,columns,rows,offset=0,details=true){
+  table.replaceChildren();
+  if(!rows.length)return;
+  const head=document.createElement('thead'),headRow=document.createElement('tr');head.append(headRow);table.append(head);
+  for(const key of columns)text(headRow,'th',evaluationLabels[key]||key.replaceAll('_',' ')).scope='col';
+  if(details)text(headRow,'th','Details').scope='col';
+  const body=document.createElement('tbody');table.append(body);
+  rows.forEach((values,index)=>{const item=document.createElement('tr');body.append(item);columns.forEach((key,column)=>text(item,'td',evaluationValue(key,values[column])));if(details){const cell=document.createElement('td');item.append(cell);const button=text(cell,'button','View evidence');button.type='button';button.addEventListener('click',()=>{document.getElementById('recordDialogTitle').textContent='Research evidence '+(offset+index+1);const fields=document.getElementById('recordDialogFields');fields.replaceChildren();columns.forEach((key,column)=>row(fields,evaluationLabels[key]||key.replaceAll('_',' '),evaluationValue(key,values[column])));recordDialog.showModal()})}});
+}
+function evaluationDiagnostic(data,capture){
+  evaluationSummary=data;document.getElementById('operatingRules').textContent=data.independent?'Current rules: Gold and crude oil are monitored independently. No other-market confirmation is required.':'Historical records may use earlier paired rules. Current monitoring checks each chart independently.';
+  const status=document.getElementById('evaluationStatus');
+  const issue=data.error||(capture&&capture.error);
+  status.textContent=issue?'Research recording needs attention: '+issue:data.status==='error'?'Research activity could not be processed. Refresh after restarting the server.':data.status==='stale'?'Saved activity — processing is paused.':data.status==='collecting'?'Collecting new research evidence. Older records may lack the history needed for exact checks.':'Research activity is updating automatically · '+number(data.accepted_quotes)+' accepted price updates · '+number(data.attempts)+' attempts.';
+  document.getElementById('evaluationCursor').textContent='Processed record '+number(data.processed_through_sequence)+' · last source time: '+localTime(data.processed_through_time)+' (your local time) · '+number(data.lag)+' records waiting. Current activity is separate from saved comparison reports.';
+  const latest=data.latest_attempt;document.getElementById('evaluationLatest').textContent=data.independent&&latest&&latest.run_id!==data.run_id?'No attempt under the new independent rules yet. Earlier attempts remain in the saved journal.':latest?'Latest attempt: '+evaluationValue('market',latest.market)+' · '+evaluationValue('outcome',latest.outcome)+' · '+(latest.reason||'Watching for a return')+' · '+localTime(latest.started):'No new attempt recorded in this research capture yet.';
+  document.getElementById('evaluationLimitations').textContent=(data.limitations||[]).join(' ');
+}
+function evaluationReportDisplay(report){
+  evaluationReport=report;
+  document.getElementById('comparisonStatus').textContent=report?'Comparison evidence: '+(report.label==='synthetic'?'Synthetic demonstration · ':'')+(report.parity==='baseline_mismatch'?'Baseline replay disagrees — comparisons cannot support a conclusion.':'saved research report; decisions are shown below.'):'No comparison report yet. Current activity is still available below. An offline comparison must be completed before alternative-rule results can be shown.';
+  const snapshot=report&&report.snapshot;
+  document.getElementById('comparisonIdentity').textContent=report?'Rules: '+(report.rule_version||'evaluation-v1')+' · data: '+evaluationValue('phase',report.phase)+' · latest source price: '+localTime(snapshot&&snapshot.observed_through)+' (your local time). '+(report.limitations||[]).join(' '):'';
+  document.getElementById('comparisonMetadata').hidden=!report;const metadata=document.getElementById('comparisonMetadataFields');metadata.replaceChildren();
+  if(report){for(const [label,value] of [['Report identifier',report.report_id],['Experiment identifier',report.experiment_id],['Snapshot identifier',snapshot&&snapshot.snapshot_id],['Operating-rule replay check',report.parity],['Costs and execution evidence',report.costs?JSON.stringify(report.costs):'Unknown unless measured costs and timing are explicitly verified in the evidence decision.'],['Validation period',report.phase_bounds?JSON.stringify(report.phase_bounds):'Unavailable']])row(metadata,label,evaluationValue('',value))}
+  const selectedMarket=document.getElementById('evaluationMarket').value,selectedVariant=document.getElementById('evaluationVariant').value,selectedPhase=document.getElementById('evaluationPhase').value;
+  const selected=item=>(!selectedMarket||item.market===selectedMarket)&&(!selectedVariant||item.variant===selectedVariant)&&(!selectedPhase||item.phase===selectedPhase||!item.phase);
+  const groups=((report&&report.groups)||[]).filter(selected),columns=['market','variant','phase','starts','matches','expired','target_hours','paired_hours','observations','normal_mean','doubled_mean','mean_lower','decision'];
+  evaluationTable(document.getElementById('evaluationGroups'),columns,groups.map(group=>columns.map(key=>group[key])));
+  const decisions=((report&&report.comparisons)||[]).filter(selected);const decisionColumns=['market','variant','decision','reason','improvement_lower'];
+  evaluationTable(document.getElementById('evaluationDecisions'),decisionColumns,decisions.map(item=>decisionColumns.map(key=>item[key])));
+}
+function evaluationQuery(kind=evaluationKind.value){
+  const query=new URLSearchParams({kind});
+  if(evaluationSource.value==='diagnostics'){
+    if(evaluationRevision===null)return null;query.set('diagnostic_revision',evaluationRevision);
+  }else{if(!evaluationReport)return null;query.set('report_id',evaluationReport.report_id)}
+  for(const [key,id] of [['market','evaluationMarket'],['variant','evaluationVariant'],['phase','evaluationPhase']]){const value=document.getElementById(id).value;if(value)query.set(key,value)}
+  return query;
+}
+async function loadEvaluationRecords(offset=0){
+  const request=++evaluationRequest;evaluationOffset=offset;const previous=document.getElementById('evaluationPrevious'),next=document.getElementById('evaluationNext'),download=document.getElementById('evaluationDownload');previous.disabled=true;next.disabled=true;download.hidden=true;evaluationList.replaceChildren();
+  for(const option of evaluationKind.options)option.disabled=evaluationSource.value==='diagnostics'&&!['coverage','stages','attempts'].includes(option.value);
+  if(evaluationKind.selectedOptions[0].disabled)evaluationKind.value='stages';
+  const query=evaluationQuery();
+  if(!query){evaluationListStatus.textContent=evaluationSource.value==='diagnostics'?'Waiting for the first processed research records.':'No saved comparison report is available. Choose current scanner activity.';return}
+  download.href='/api/pattern/evaluation/records.csv?'+query;download.hidden=false;query.set('offset',offset);query.set('limit',25);evaluationListStatus.textContent='Loading research evidence…';
+  try{const response=await fetch('/api/pattern/evaluation/records?'+query,{cache:'no-store'});if(response.status===409)throw new Error('retired');if(!response.ok)throw new Error('unavailable');const result=await response.json();if(request!==evaluationRequest)return;if(!Array.isArray(result.columns)||!Array.isArray(result.rows))throw new Error('unavailable');evaluationTable(evaluationList,result.columns,result.rows,offset);evaluationListStatus.textContent=result.rows.length?'Showing records '+(offset+1)+'–'+(offset+result.rows.length)+'. Evidence is pinned to '+(evaluationSource.value==='diagnostics'?'activity revision '+evaluationRevision:'this saved report')+'. Times use your local time zone.':'No records match these filters. This does not mean the whole scanner has no activity.';previous.disabled=offset===0;next.disabled=!result.has_more;
+  }catch(error){if(request!==evaluationRequest)return;download.hidden=true;evaluationListStatus.textContent=error.message==='retired'?'Activity has advanced. Select Refresh evidence to load a new, consistent list.':'Could not load research evidence. Check the connection and select Refresh evidence.';previous.disabled=offset===0}
+}
+async function refreshEvaluation(){
+  try{const response=await fetch('/api/pattern/evaluation',{cache:'no-store'});if(!response.ok)throw new Error('unavailable');const result=await response.json();if(!result.diagnostics)throw new Error('unavailable');evaluationDiagnostic(result.diagnostics);evaluationRevision=Number.isInteger(result.diagnostics.revision)&&result.diagnostics.revision>0?result.diagnostics.revision:null;evaluationReportDisplay(result.report||null);await loadEvaluationRecords();
+  }catch(error){document.getElementById('evaluationStatus').textContent='Research activity is unavailable. Check the connection and select Refresh evidence.'}
+}
+document.getElementById('evaluationRefresh').addEventListener('click',refreshEvaluation);
+for(const control of [evaluationSource,evaluationKind,document.getElementById('evaluationMarket'),document.getElementById('evaluationVariant'),document.getElementById('evaluationPhase')])control.addEventListener('change',()=>{evaluationReportDisplay(evaluationReport);loadEvaluationRecords()});
+document.getElementById('evaluationPrevious').addEventListener('click',()=>loadEvaluationRecords(Math.max(0,evaluationOffset-25)));
+document.getElementById('evaluationNext').addEventListener('click',()=>loadEvaluationRecords(evaluationOffset+25));
+let renderedAlertSignature=null;
+function display(state){
+  if(state.evaluation_diagnostics)evaluationDiagnostic(state.evaluation_diagnostics,state.evaluation_capture);
+  const live=state.authenticated && state.feed_connected;
+  const delayed=Boolean(state.delayed_research);
+  feed.textContent=!state.authenticated?'Demo broker login required. Use Broker login below.':live?'Demo price feed connected':'Waiting for demo price feed connection';
+  trigger.textContent=!live?'Paused — price feed unavailable':state.status==='delayed'?'Paused — prices are too delayed':state.status==='warming'?'Getting ready — collecting price history':(state.markets||[]).some(m=>m.phase==='breakout')?'Price moved outside its range — watching for a return':delayed?'Scanner is watching — delayed prices':'Scanner is watching for a pattern';
+  document.getElementById('scannerStatus').dataset.tone=(!live||state.status==='delayed'||delayed||state.error)?'warning':'ready';
+  const mode=document.getElementById('dataMode');
+  mode.textContent=!live?'':state.status==='delayed'?'Monitoring is paused. Waiting for prices less than 30 seconds old.':delayed?'Delayed prices · about '+seconds(state.quote_delay_seconds)+' seconds behind. We can study patterns, but these are not live entry alerts.':'Prices pass the freshness check (within 5 seconds). Research alerts only; no trades are placed.';
+  mode.style.color=delayed?'#ffd693':'#b8c9d9';
+  document.getElementById('notice').textContent=state.error||'';
+  const delivery=state.notifications;
+  journalDisplay(state.journal);
+  document.getElementById('notifications').textContent=delivery && delivery.enabled?'Telegram via Hermes · '+delivery.status+' · '+delivery.sent+' messages sent'+(delivery.failed?' · '+delivery.failed+' failed':''):'Telegram messages are not set up';
+  stamp.textContent=state.last_quote?'Last price update: '+localTime(state.last_quote)+' (your local time)':'';
+  markets.replaceChildren();
+  for(const market of state.markets||[]){
+    const section=document.createElement('section');markets.append(section);
+    text(section,'h2',market.market);
+    const paused=!live||state.status==='delayed'||market.phase==='paused';
+    text(section,'p',paused?'Paused — waiting for usable prices':market.phase==='breakout'?'Move outside range · waiting for a return':market.phase==='collecting'?'Getting ready · collecting price history':'Watching · no matching pattern yet').className='phase';
+    if(!paused&&market.phase==='breakout')text(section,'p','Each attempt lasts up to 90 seconds. If price does not return in time, the attempt expires. A later move starts a separate attempt.').className='range';
+    text(section,'p',paused?'Price unavailable':number(market.price)).className='price';
+    text(section,'p','Latest received price · midpoint of buy and sell quotes').className='range';
+    text(section,'p','Recent price area: '+(paused?'unavailable':number(market.range_low)+' – '+number(market.range_high))).className='range';
+  }
+  document.getElementById('empty').hidden=Boolean((state.alerts||[]).length);
+  document.querySelector('#empty p').textContent=!live||state.status==='delayed'?'The scanner needs usable prices before it can check for a new pattern. Saved attempts remain visible below. No trades are placed.':state.journal&&state.journal.attempts?'Detected moves have been recorded. See their results below. A Telegram alert requires every rule to pass.':'A detected move becomes an alert only when every rule passes. Recent attempts and their results appear below.';
+  const alertSignature=JSON.stringify(state.alerts||[]);
+  if(alertSignature!==renderedAlertSignature){
+  const expandedEvidence=new Set(Array.from(alerts.querySelectorAll('details[open]'),detail=>detail.dataset.alertId));
+  const focusedEvidence=alerts.contains(document.activeElement)?document.activeElement.closest('details')?.dataset.alertId:null;
+  alerts.replaceChildren();
+  for(const alert of state.alerts||[]){
+    const section=document.createElement('section');section.className='alert';alerts.append(section);
+    const plan=alert.plan||{action:alert.direction==='UP'?'BUY':alert.direction==='DOWN'?'SELL':'UNKNOWN',entry:'unavailable',stop_loss:'unavailable',take_profit:'unavailable',status:'WAIT — levels unavailable for this older record'};
+    text(section,'h2',alert.market+' | '+plan.action+' | DEMO');
+    if(plan.status)text(section,'p',plan.status).className='badge';
+    const levels=document.createElement('dl');levels.className='alert-levels';section.append(levels);
+    row(levels,'Entry',plan.entry);row(levels,'Stop loss',plan.stop_loss);row(levels,'Take profit (2R)',plan.take_profit);
+    text(section,'p',localTime(alert.trigger_time)+' (local) · Delay '+seconds(alert.quote_delay_seconds)+'s · Recorded signal prices').className='range';
+    const detail=document.createElement('details');detail.dataset.alertId=(alert.epic||alert.market)+'|'+alert.trigger_time;detail.open=expandedEvidence.has(detail.dataset.alertId);section.append(detail);const summary=text(detail,'summary','See pattern evidence');if(detail.dataset.alertId===focusedEvidence)summary.focus({preventScroll:true});
+    const list=document.createElement('dl');detail.append(list);
+    text(detail,'p',alert.market+' broke '+(alert.direction==='DOWN'?'above':'below')+' its own reference range, then returned inside within 90 seconds.'+(alert.rule_version==='independent-rejection-v2'?' This alert uses only '+alert.market+' prices.':' '+alert.other_market+' moved in the opposite direction during that historical attempt.'));
+    row(list,'Breakout midpoint',number(alert.breakout_price));row(list,'Return midpoint',number(alert.return_price));
+    row(list,'Frozen range',number(alert.range_low)+' – '+number(alert.range_high));
+    if(alert.other_market)row(list,alert.other_market+' movement',number(alert.other_start)+' → '+number(alert.other_end));
+    row(list,'Breakout time',alert.breakout_time);row(list,'Alert time',alert.trigger_time);
+    row(list,'Observed at (broker clock)',alert.observed_time||'Unavailable');
+    row(list,'Measured data delay',number(alert.quote_delay_seconds)+' seconds');
+    text(section,'small','Unvalidated demo. No trade placed.');
+  }
+  renderedAlertSignature=alertSignature;
+  }
+  document.title=(state.alerts||[]).length?'Research alerts · Gold & oil':'Gold & oil · Pattern watch';
+}
+function connect(){
+  if(events)events.close();
+  events=new EventSource('/api/pattern/events');
+  events.onmessage=event=>display(JSON.parse(event.data));
+  events.onerror=()=>{feed.textContent='Scanner connection interrupted. Reconnecting…';trigger.textContent='Paused — scanner connection unavailable';document.getElementById('scannerStatus').dataset.tone='warning';document.getElementById('dataMode').textContent='Waiting to reconnect. New patterns cannot be checked right now.';stamp.textContent='';markets.replaceChildren()};
+}
+fetch('/api/session').then(response=>{
+  if(!response.ok)throw new Error('login');
+  connect();
+  refreshEvaluation();
+}).catch(()=>{feed.textContent='Demo broker login required. Use Broker login below.';trigger.textContent='Paused — demo feed unavailable'});
+window.addEventListener('focus',()=>{if(!document.hidden)connect()});
+</script></html>
+
+

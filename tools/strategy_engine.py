@@ -1,12 +1,13 @@
-"""Trading strategy engine — 7 strategies + backtest engine.
+"""Trading strategy engine — 8 strategies + backtest engine.
 
 Pure numpy-free. Bars: [{"time", "open", "high", "low", "close", "volume"}, ...]
 """
 
 import math
-from dataclasses import dataclass, asdict, field
-from typing import Callable, Literal
-
+from collections.abc import Callable
+from dataclasses import asdict, dataclass
+from datetime import UTC
+from typing import Literal, TypedDict
 
 # ─── Regime detection ─────────────────────────────────────────────────────────
 # Each strategy declares which regimes it should fire in. Strategies whose
@@ -20,13 +21,14 @@ _REGIME_CALM = "calm"
 
 # strategy -> allowed regimes (None = any)
 STRATEGY_REGIMES: dict[str, set[str] | None] = {
-    "momentum_breakout":      {_REGIME_TRENDING, _REGIME_VOLATILE},
-    "mean_reversion_rsi_bb":  {_REGIME_RANGING, _REGIME_CALM},
-    "order_flow_volume":      None,  # volume signals fire in any regime
-    "breakout_volatility":    {_REGIME_VOLATILE, _REGIME_CALM},
-    "trend_ema_pullback":     {_REGIME_TRENDING},
-    "scalping_volatility":    None,  # multi-mode — already self-gates
-    "fib_retracement":        {_REGIME_TRENDING, _REGIME_RANGING},
+    "momentum_breakout": {_REGIME_TRENDING, _REGIME_VOLATILE},
+    "mean_reversion_rsi_bb": {_REGIME_RANGING, _REGIME_CALM},
+    "order_flow_volume": None,  # volume signals fire in any regime
+    "breakout_volatility": {_REGIME_VOLATILE, _REGIME_CALM},
+    "trend_ema_pullback": {_REGIME_TRENDING},
+    "scalping_volatility": None,  # multi-mode — already self-gates
+    "fib_retracement": {_REGIME_TRENDING, _REGIME_RANGING},
+    "fvg_retracement": None,  # FVG validates its own displacement/retest
 }
 
 
@@ -46,7 +48,11 @@ def _classify_regime(bars: list[dict]) -> str:
     if math.isnan(a) or math.isnan(w):
         return _REGIME_CALM
     # Compute BB-width relative to its own 100-bar median.
-    widths = [bb["width"][j] for j in range(max(0, i - 99), i + 1) if not math.isnan(bb["width"][j])]
+    widths = [
+        bb["width"][j]
+        for j in range(max(0, i - 99), i + 1)
+        if not math.isnan(bb["width"][j])
+    ]
     if len(widths) < 50:
         return _REGIME_CALM
     median_w = sorted(widths)[len(widths) // 2]
@@ -66,6 +72,7 @@ def _classify_regime(bars: list[dict]) -> str:
 
 
 # ─── Indicator helpers ────────────────────────────────────────────────────────
+
 
 def _closes(bars: list[dict]) -> list[float]:
     return [b["close"] for b in bars]
@@ -108,8 +115,8 @@ def compute_atr(bars: list[dict], period: int = 14) -> list[float]:
         return [math.nan] * len(bars)
     trs: list[float] = [bars[0]["high"] - bars[0]["low"]]
     for i in range(1, len(bars)):
-        h, l, pc = bars[i]["high"], bars[i]["low"], bars[i - 1]["close"]
-        trs.append(max(h - l, abs(h - pc), abs(l - pc)))
+        h, low, pc = bars[i]["high"], bars[i]["low"], bars[i - 1]["close"]
+        trs.append(max(h - low, abs(h - pc), abs(low - pc)))
     out: list[float] = [math.nan] * len(trs)
     if len(trs) < period:
         return out
@@ -154,7 +161,7 @@ def compute_bb(bars: list[dict], period: int = 20, num_std: float = 2.0) -> dict
         window = cs[i + 1 - period : i + 1]
         m = sum(window) / period
         var = sum((x - m) ** 2 for x in window) / period
-        s = var ** 0.5
+        s = var**0.5
         upper.append(m + num_std * s)
         lower.append(m - num_std * s)
         width.append(upper[-1] - lower[-1])
@@ -172,8 +179,8 @@ def compute_adx(bars: list[dict], period: int = 14) -> list[float]:
         dn = bars[i - 1]["low"] - bars[i]["low"]
         plus_dm.append(max(up, 0) if up > dn and up > 0 else 0.0)
         minus_dm.append(max(dn, 0) if dn > up and dn > 0 else 0.0)
-        h, l, pc = bars[i]["high"], bars[i]["low"], bars[i - 1]["close"]
-        trs.append(max(h - l, abs(h - pc), abs(l - pc)))
+        h, low, pc = bars[i]["high"], bars[i]["low"], bars[i - 1]["close"]
+        trs.append(max(h - low, abs(h - pc), abs(low - pc)))
 
     def _wilder(arr: list[float], p: int) -> list[float]:
         out = [0.0] * len(arr)
@@ -217,6 +224,7 @@ def compute_donchian(bars: list[dict], period: int = 20) -> dict:
 
 # ─── Signal dataclass ─────────────────────────────────────────────────────────
 
+
 @dataclass
 class Signal:
     strategy: str
@@ -234,6 +242,7 @@ class Signal:
 
 
 # ─── Strategy functions ───────────────────────────────────────────────────────
+
 
 def momentum_breakout(bars: list[dict], symbol: str = "?") -> Signal | None:
     if len(bars) < 60:
@@ -263,15 +272,33 @@ def momentum_breakout(bars: list[dict], symbol: str = "?") -> Signal | None:
         sl = round(entry - 2 * a, 8)
         tp = round(entry + 3 * a, 8)
         conf = min(1.0, 0.5 + (adx_v - 20) / 50)
-        return Signal("momentum_breakout", symbol, "long", entry, sl, tp, conf,
-                     f"20-bar breakout (high={up:.5f}) on {last['volume']/avg_vol:.1f}x vol, ADX={adx_v:.0f}", a)
+        return Signal(
+            "momentum_breakout",
+            symbol,
+            "long",
+            entry,
+            sl,
+            tp,
+            conf,
+            f"20-bar breakout (high={up:.5f}) on {last['volume'] / avg_vol:.1f}x vol, ADX={adx_v:.0f}",
+            a,
+        )
     if last["close"] < dn and last["low"] < dn:
         entry = last["close"]
         sl = round(entry + 2 * a, 8)
         tp = round(entry - 3 * a, 8)
         conf = min(1.0, 0.5 + (adx_v - 20) / 50)
-        return Signal("momentum_breakout", symbol, "short", entry, sl, tp, conf,
-                     f"20-bar breakdown (low={dn:.5f}) on {last['volume']/avg_vol:.1f}x vol, ADX={adx_v:.0f}", a)
+        return Signal(
+            "momentum_breakout",
+            symbol,
+            "short",
+            entry,
+            sl,
+            tp,
+            conf,
+            f"20-bar breakdown (low={dn:.5f}) on {last['volume'] / avg_vol:.1f}x vol, ADX={adx_v:.0f}",
+            a,
+        )
     return None
 
 
@@ -297,15 +324,33 @@ def mean_reversion_rsi_bb(bars: list[dict], symbol: str = "?") -> Signal | None:
         sl = round(entry - 1.5 * a, 8)
         tp_val = round(mid, 8)
         conf = min(1.0, 0.4 + (5 - r) / 20)
-        return Signal("mean_reversion_rsi_bb", symbol, "long", entry, sl, tp_val, conf,
-                     f"RSI(2)={r:.1f} at lower BB, above 200-EMA ({ema:.5f})", a)
+        return Signal(
+            "mean_reversion_rsi_bb",
+            symbol,
+            "long",
+            entry,
+            sl,
+            tp_val,
+            conf,
+            f"RSI(2)={r:.1f} at lower BB, above 200-EMA ({ema:.5f})",
+            a,
+        )
     if r > 95 and last["close"] >= upper and last["close"] < ema:
         entry = last["close"]
         sl = round(entry + 1.5 * a, 8)
         tp_val = round(mid, 8)
         conf = min(1.0, 0.4 + (r - 95) / 20)
-        return Signal("mean_reversion_rsi_bb", symbol, "short", entry, sl, tp_val, conf,
-                     f"RSI(2)={r:.1f} at upper BB, below 200-EMA ({ema:.5f})", a)
+        return Signal(
+            "mean_reversion_rsi_bb",
+            symbol,
+            "short",
+            entry,
+            sl,
+            tp_val,
+            conf,
+            f"RSI(2)={r:.1f} at upper BB, below 200-EMA ({ema:.5f})",
+            a,
+        )
     return None
 
 
@@ -330,15 +375,33 @@ def order_flow_volume(bars: list[dict], symbol: str = "?") -> Signal | None:
         sl = round(entry - 2 * a, 8)
         tp_val = round(entry + 3 * a, 8)
         conf = min(1.0, 0.45 + (last["volume"] / avg_vol - 3) / 10)
-        return Signal("order_flow_volume", symbol, "long", entry, sl, tp_val, conf,
-                     f"Vol spike {last['volume']/avg_vol:.1f}x, close at {close_pos:.0%} bar high", a)
+        return Signal(
+            "order_flow_volume",
+            symbol,
+            "long",
+            entry,
+            sl,
+            tp_val,
+            conf,
+            f"Vol spike {last['volume'] / avg_vol:.1f}x, close at {close_pos:.0%} bar high",
+            a,
+        )
     if close_pos < 0.3:
         entry = last["close"]
         sl = round(entry + 2 * a, 8)
         tp_val = round(entry - 3 * a, 8)
         conf = min(1.0, 0.45 + (last["volume"] / avg_vol - 3) / 10)
-        return Signal("order_flow_volume", symbol, "short", entry, sl, tp_val, conf,
-                     f"Vol spike {last['volume']/avg_vol:.1f}x, close at {close_pos:.0%} bar low", a)
+        return Signal(
+            "order_flow_volume",
+            symbol,
+            "short",
+            entry,
+            sl,
+            tp_val,
+            conf,
+            f"Vol spike {last['volume'] / avg_vol:.1f}x, close at {close_pos:.0%} bar low",
+            a,
+        )
     return None
 
 
@@ -366,15 +429,33 @@ def breakout_volatility(bars: list[dict], symbol: str = "?") -> Signal | None:
         sl = round(lower, 8)
         tp_val = round(entry + (upper - lower), 8)
         conf = min(1.0, 0.4 + (width[i] / median_w - 2) / 5)
-        return Signal("breakout_volatility", symbol, "long", entry, sl, tp_val, conf,
-                     f"BB-width expansion {width[i]/median_w:.1f}x median, close above upper", a)
+        return Signal(
+            "breakout_volatility",
+            symbol,
+            "long",
+            entry,
+            sl,
+            tp_val,
+            conf,
+            f"BB-width expansion {width[i] / median_w:.1f}x median, close above upper",
+            a,
+        )
     if last["close"] < lower:
         entry = last["close"]
         sl = round(upper, 8)
         tp_val = round(entry - (upper - lower), 8)
         conf = min(1.0, 0.4 + (width[i] / median_w - 2) / 5)
-        return Signal("breakout_volatility", symbol, "short", entry, sl, tp_val, conf,
-                     f"BB-width expansion {width[i]/median_w:.1f}x median, close below lower", a)
+        return Signal(
+            "breakout_volatility",
+            symbol,
+            "short",
+            entry,
+            sl,
+            tp_val,
+            conf,
+            f"BB-width expansion {width[i] / median_w:.1f}x median, close below lower",
+            a,
+        )
     return None
 
 
@@ -407,16 +488,34 @@ def trend_ema_pullback(bars: list[dict], symbol: str = "?") -> Signal | None:
         tp_val = round(max(lookback, entry + 2 * (entry - sl)), 8)
         # e200 guarded non-zero above
         conf = min(0.95, 0.45 + min(0.3, (e20 - e200) / e200 * 50))
-        return Signal("trend_ema_pullback", symbol, "long", entry, sl, tp_val, conf,
-                     f"Uptrend EMAs aligned, pullback to 20-EMA ({e20:.5f}), RSI={r:.0f}", a)
+        return Signal(
+            "trend_ema_pullback",
+            symbol,
+            "long",
+            entry,
+            sl,
+            tp_val,
+            conf,
+            f"Uptrend EMAs aligned, pullback to 20-EMA ({e20:.5f}), RSI={r:.0f}",
+            a,
+        )
     if e20 < e50 < e200 and 40 <= r <= 60:
         entry = last["close"]
         sl = round(e50, 8)
         lookback = min(_lows(bars)[i - 50 : i + 1])
         tp_val = round(min(lookback, entry - 2 * (sl - entry)), 8)
         conf = min(0.95, 0.45 + min(0.3, (e200 - e20) / e200 * 50))
-        return Signal("trend_ema_pullback", symbol, "short", entry, sl, tp_val, conf,
-                     f"Downtrend EMAs aligned, pullback to 20-EMA ({e20:.5f}), RSI={r:.0f}", a)
+        return Signal(
+            "trend_ema_pullback",
+            symbol,
+            "short",
+            entry,
+            sl,
+            tp_val,
+            conf,
+            f"Downtrend EMAs aligned, pullback to 20-EMA ({e20:.5f}), RSI={r:.0f}",
+            a,
+        )
     return None
 
 
@@ -427,7 +526,7 @@ def scalping_volatility(bars: list[dict], symbol: str = "?") -> Signal | None:
       2. Trend pullback: price pulls back to EMA9 with EMA9 > EMA21
       3. Mean reversion: RSI(7) extreme (<25 or >75) at Bollinger band
       4. Donchian breakout: 10-bar high/low break (original)
-    ATR(14) × 0.8 SL, ATR(14) × 1.5 TP.
+    ATR(14) x 0.8 SL, ATR(14) x 1.5 TP.
     """
     if len(bars) < 30:
         return None
@@ -462,44 +561,100 @@ def scalping_volatility(bars: list[dict], symbol: str = "?") -> Signal | None:
         hi5 = max(b["high"] for b in bars[i - 5 : i])
         if close >= hi5 and e9 > e21 and 40 <= r <= 70:
             entry = close
-            return Signal("scalping_volatility", symbol, "long", entry,
-                          round(entry - 0.8 * a, 8), round(entry + 1.5 * a, 8), 0.6,
-                          f"⚡MOMENTUM 5-bar high break, EMA9>21 (RSI {r:.0f})", a)
+            return Signal(
+                "scalping_volatility",
+                symbol,
+                "long",
+                entry,
+                round(entry - 0.8 * a, 8),
+                round(entry + 1.5 * a, 8),
+                0.6,
+                f"⚡MOMENTUM 5-bar high break, EMA9>21 (RSI {r:.0f})",
+                a,
+            )
     # ── Mode 2: trend pullback to EMA9 ──
     if e9 > e21 and abs(close - e9) / e9 < 0.0005 and 45 <= r <= 65:
         entry = close
-        return Signal("scalping_volatility", symbol, "long", entry,
-                      round(entry - 0.8 * a, 8), round(entry + 1.5 * a, 8), 0.55,
-                      f"⚡PULLBACK touched EMA9, EMA9>21 (RSI {r:.0f})", a)
+        return Signal(
+            "scalping_volatility",
+            symbol,
+            "long",
+            entry,
+            round(entry - 0.8 * a, 8),
+            round(entry + 1.5 * a, 8),
+            0.55,
+            f"⚡PULLBACK touched EMA9, EMA9>21 (RSI {r:.0f})",
+            a,
+        )
     # ── Mode 3: RSI mean reversion short at upper band ──
     if r > 75 and close >= bb_upper and e9 < e21:
         entry = close
-        return Signal("scalping_volatility", symbol, "short", entry,
-                      round(entry + 0.8 * a, 8), round(entry - 1.5 * a, 8), 0.6,
-                      f"⚡REVERT RSI{r:.0f}>75 at upper BB", a)
+        return Signal(
+            "scalping_volatility",
+            symbol,
+            "short",
+            entry,
+            round(entry + 0.8 * a, 8),
+            round(entry - 1.5 * a, 8),
+            0.6,
+            f"⚡REVERT RSI{r:.0f}>75 at upper BB",
+            a,
+        )
     # ── Mode 4: RSI mean reversion long at lower band ──
     if r < 25 and close <= bb_lower and e9 > e21:
         entry = close
-        return Signal("scalping_volatility", symbol, "long", entry,
-                      round(entry - 0.8 * a, 8), round(entry + 1.5 * a, 8), 0.6,
-                      f"⚡REVERT RSI{r:.0f}<25 at lower BB", a)
+        return Signal(
+            "scalping_volatility",
+            symbol,
+            "long",
+            entry,
+            round(entry - 0.8 * a, 8),
+            round(entry + 1.5 * a, 8),
+            0.6,
+            f"⚡REVERT RSI{r:.0f}<25 at lower BB",
+            a,
+        )
     # ── Mode 5: short pullback in downtrend ──
     if e9 < e21 and abs(close - e9) / e9 < 0.0005 and 35 <= r <= 55:
         entry = close
-        return Signal("scalping_volatility", symbol, "short", entry,
-                      round(entry + 0.8 * a, 8), round(entry - 1.5 * a, 8), 0.55,
-                      f"⚡PULLBACK touched EMA9, EMA9<21 (RSI {r:.0f})", a)
+        return Signal(
+            "scalping_volatility",
+            symbol,
+            "short",
+            entry,
+            round(entry + 0.8 * a, 8),
+            round(entry - 1.5 * a, 8),
+            0.55,
+            f"⚡PULLBACK touched EMA9, EMA9<21 (RSI {r:.0f})",
+            a,
+        )
     # ── Mode 6: classic Donchian 10-bar breakout (last resort) ──
     if close >= hi10 and e9 > e21 and 45 <= r <= 72:
         entry = close
-        return Signal("scalping_volatility", symbol, "long", entry,
-                      round(entry - 0.8 * a, 8), round(entry + 1.5 * a, 8), 0.55,
-                      f"⚡BREAKOUT 10-bar high, EMA9>21 (RSI {r:.0f})", a)
+        return Signal(
+            "scalping_volatility",
+            symbol,
+            "long",
+            entry,
+            round(entry - 0.8 * a, 8),
+            round(entry + 1.5 * a, 8),
+            0.55,
+            f"⚡BREAKOUT 10-bar high, EMA9>21 (RSI {r:.0f})",
+            a,
+        )
     if close <= lo10 and e9 < e21 and 28 <= r <= 55:
         entry = close
-        return Signal("scalping_volatility", symbol, "short", entry,
-                      round(entry + 0.8 * a, 8), round(entry - 1.5 * a, 8), 0.55,
-                      f"⚡BREAKOUT 10-bar low, EMA9<21 (RSI {r:.0f})", a)
+        return Signal(
+            "scalping_volatility",
+            symbol,
+            "short",
+            entry,
+            round(entry + 0.8 * a, 8),
+            round(entry - 1.5 * a, 8),
+            0.55,
+            f"⚡BREAKOUT 10-bar low, EMA9<21 (RSI {r:.0f})",
+            a,
+        )
     return None
 
 
@@ -583,7 +738,7 @@ def fib_retracement(bars: list[dict], symbol: str = "?") -> Signal | None:
             # fall back to an ATR-based stop.
             if sl >= entry:
                 sl = round(entry - 1.5 * a, 8)
-            target_1 = round(swing_high, 8)      # 1.0 fib = opposite extreme
+            target_1 = round(swing_high, 8)  # 1.0 fib = opposite extreme
             target_2 = round(entry + 2 * (entry - sl), 8)  # 2R
             tp = min(target_1, target_2)
             # Guard: TP must be ABOVE entry for a long.
@@ -595,9 +750,18 @@ def fib_retracement(bars: list[dict], symbol: str = "?") -> Signal | None:
             ema_bonus = min(0.15, (e20 - e50) / e50 * 50) if e50 != 0 else 0
             conf = min(0.95, base + ema_bonus)
             level = "0.618" if touched_618 else "0.500"
-            return Signal("fib_retracement", symbol, "long", entry, sl, tp, conf,
-                         f"Uptrend fib retest of {level} (level={fib_618 if touched_618 else fib_50:.5f}), "
-                         f"EMA20>EMA50, prev wick into zone", a)
+            return Signal(
+                "fib_retracement",
+                symbol,
+                "long",
+                entry,
+                sl,
+                tp,
+                conf,
+                f"Uptrend fib retest of {level} (level={fib_618 if touched_618 else fib_50:.5f}), "
+                f"EMA20>EMA50, prev wick into zone",
+                a,
+            )
 
     else:
         # Downtrend (high came before low in the window — or close below mid).
@@ -629,10 +793,107 @@ def fib_retracement(bars: list[dict], symbol: str = "?") -> Signal | None:
             ema_bonus = min(0.15, (e50 - e20) / e50 * 50) if e50 != 0 else 0
             conf = min(0.95, base + ema_bonus)
             level = "0.618" if touched_618 else "0.500"
-            return Signal("fib_retracement", symbol, "short", entry, sl, tp, conf,
-                         f"Downtrend fib retest of {level} (level={fib_618 if touched_618 else fib_50:.5f}), "
-                         f"EMA20<EMA50, prev wick into zone", a)
+            return Signal(
+                "fib_retracement",
+                symbol,
+                "short",
+                entry,
+                sl,
+                tp,
+                conf,
+                f"Downtrend fib retest of {level} (level={fib_618 if touched_618 else fib_50:.5f}), "
+                f"EMA20<EMA50, prev wick into zone",
+                a,
+            )
 
+    return None
+
+
+def fvg_retracement(bars: list[dict], symbol: str = "?") -> Signal | None:
+    """Trade the first controlled retracement into a recent three-candle FVG.
+
+    A bullish FVG spans the first candle's high to the third candle's low; a
+    bearish FVG is the inverse. The gap must be materially sized, unfilled,
+    and no older than 20 bars. The retest bar must close on the favourable
+    side of the midpoint so a full fill is never treated as an entry.
+
+    This is session-agnostic for the multi-market Trader. The TradingView
+    script remains the opening-range variant from the referenced video.
+    """
+    if len(bars) < 20:
+        return None
+
+    i = len(bars) - 1
+    atr = compute_atr(bars, 14)
+    a = atr[i]
+    if math.isnan(a) or a <= 0:
+        return None
+
+    last = bars[i]
+    min_gap = 0.15 * a
+    earliest = max(2, i - 20)
+    # The third FVG candle must be complete before a later retest can fire.
+    for end in range(i - 1, earliest - 1, -1):
+        first = bars[end - 2]
+        third = bars[end]
+
+        bullish_lower = first["high"]
+        bullish_upper = third["low"]
+        if bullish_upper - bullish_lower >= min_gap:
+            was_filled = any(bar["low"] <= bullish_lower for bar in bars[end + 1 : i])
+            midpoint = (bullish_lower + bullish_upper) / 2
+            touches_zone = (
+                last["low"] <= bullish_upper and last["high"] >= bullish_lower
+            )
+            holds_favourable_half = (
+                last["low"] > bullish_lower and last["close"] >= midpoint
+            )
+            if not was_filled and touches_zone and holds_favourable_half:
+                entry = last["close"]
+                stop_loss = round(bullish_lower - 0.25 * a, 8)
+                if stop_loss < entry:
+                    risk = entry - stop_loss
+                    return Signal(
+                        "fvg_retracement",
+                        symbol,
+                        "long",
+                        entry,
+                        stop_loss,
+                        round(entry + 2 * risk, 8),
+                        0.65,
+                        f"Bullish 3-candle FVG {bullish_lower:.5f}-{bullish_upper:.5f} "
+                        f"retested after {i - end} bars; close held above 50%",
+                        a,
+                    )
+
+        bearish_lower = third["high"]
+        bearish_upper = first["low"]
+        if bearish_upper - bearish_lower >= min_gap:
+            was_filled = any(bar["high"] >= bearish_upper for bar in bars[end + 1 : i])
+            midpoint = (bearish_lower + bearish_upper) / 2
+            touches_zone = (
+                last["high"] >= bearish_lower and last["low"] <= bearish_upper
+            )
+            holds_favourable_half = (
+                last["high"] < bearish_upper and last["close"] <= midpoint
+            )
+            if not was_filled and touches_zone and holds_favourable_half:
+                entry = last["close"]
+                stop_loss = round(bearish_upper + 0.25 * a, 8)
+                if stop_loss > entry:
+                    risk = stop_loss - entry
+                    return Signal(
+                        "fvg_retracement",
+                        symbol,
+                        "short",
+                        entry,
+                        stop_loss,
+                        round(entry - 2 * risk, 8),
+                        0.65,
+                        f"Bearish 3-candle FVG {bearish_lower:.5f}-{bearish_upper:.5f} "
+                        f"retested after {i - end} bars; close held below 50%",
+                        a,
+                    )
     return None
 
 
@@ -641,6 +902,7 @@ def _regime_gated(
     regimes: set[str] | None,
 ) -> Callable[[list[dict], str], Signal | None]:
     """Wrap a strategy so it returns None when the market regime doesn't match."""
+
     def wrapper(bars: list[dict], symbol: str) -> Signal | None:
         if regimes is None:
             return fn(bars, symbol)
@@ -648,6 +910,7 @@ def _regime_gated(
         if regime not in regimes:
             return None
         return fn(bars, symbol)
+
     return wrapper
 
 
@@ -659,6 +922,7 @@ ALL_STRATEGIES: dict[str, Callable[[list[dict], str], Signal | None]] = {
     "trend_ema_pullback": trend_ema_pullback,
     "scalping_volatility": scalping_volatility,
     "fib_retracement": fib_retracement,
+    "fvg_retracement": fvg_retracement,
 }
 
 # Apply regime gating wrappers (computed after dict definition so closures work).
@@ -668,6 +932,7 @@ for _name, _regimes in STRATEGY_REGIMES.items():
 
 
 # ─── Backtest engine ──────────────────────────────────────────────────────────
+
 
 @dataclass
 class Trade:
@@ -707,10 +972,16 @@ def backtest(
             if i + 1 >= len(bars):
                 break
             entry = bars[i + 1]["open"]
-            sl_dist = abs(entry - (sig.stop_loss if sig.direction == "long" else sig.stop_loss))
-            if sl_dist <= 0:
+            if sig.direction == "long":
+                valid_levels = sig.stop_loss < entry < sig.take_profit
+            else:
+                valid_levels = sig.take_profit < entry < sig.stop_loss
+            # A gap through either level leaves no tradeable bracket; counting it
+            # would book a stop-out above entry as a win.
+            if not valid_levels:
                 equity_curve.append(cash)
                 continue
+            sl_dist = abs(entry - sig.stop_loss)
             risk_dollars = cash * risk_pct
             size = risk_dollars / sl_dist
             position = {
@@ -732,54 +1003,101 @@ def backtest(
         bar = bars[i]
         if position["direction"] == "long":
             if bar["low"] <= position["sl"]:
-                pnl = (position["sl"] - position["entry"]) * position["size"]
+                fill = min(bar["open"], position["sl"])
+                pnl = (fill - position["entry"]) * position["size"]
                 pnl -= position["entry"] * position["size"] * round_trip_cost
                 cash += pnl
-                trades.append(Trade(entry_time=bars[entry_idx]["time"], entry=position["entry"],
-                                    exit_time=bar["time"], exit=position["sl"],
-                                    direction="long", pnl=pnl, r_multiple=-1.0, bars_held=i - entry_idx))
+                trades.append(
+                    Trade(
+                        entry_time=bars[entry_idx]["time"],
+                        entry=position["entry"],
+                        exit_time=bar["time"],
+                        exit=fill,
+                        direction="long",
+                        pnl=pnl,
+                        r_multiple=(fill - position["entry"]) / position["r_dist"],
+                        bars_held=i - entry_idx,
+                    )
+                )
                 position = None
             elif bar["high"] >= position["tp"]:
                 pnl = (position["tp"] - position["entry"]) * position["size"]
                 pnl -= position["entry"] * position["size"] * round_trip_cost
                 cash += pnl
                 r = (position["tp"] - position["entry"]) / position["r_dist"]
-                trades.append(Trade(entry_time=bars[entry_idx]["time"], entry=position["entry"],
-                                    exit_time=bar["time"], exit=position["tp"],
-                                    direction="long", pnl=pnl, r_multiple=r, bars_held=i - entry_idx))
+                trades.append(
+                    Trade(
+                        entry_time=bars[entry_idx]["time"],
+                        entry=position["entry"],
+                        exit_time=bar["time"],
+                        exit=position["tp"],
+                        direction="long",
+                        pnl=pnl,
+                        r_multiple=r,
+                        bars_held=i - entry_idx,
+                    )
+                )
                 position = None
         else:
             if bar["high"] >= position["sl"]:
-                pnl = (position["entry"] - position["sl"]) * position["size"]
+                fill = max(bar["open"], position["sl"])
+                pnl = (position["entry"] - fill) * position["size"]
                 pnl -= position["entry"] * position["size"] * round_trip_cost
                 cash += pnl
-                trades.append(Trade(entry_time=bars[entry_idx]["time"], entry=position["entry"],
-                                    exit_time=bar["time"], exit=position["sl"],
-                                    direction="short", pnl=pnl, r_multiple=-1.0, bars_held=i - entry_idx))
+                trades.append(
+                    Trade(
+                        entry_time=bars[entry_idx]["time"],
+                        entry=position["entry"],
+                        exit_time=bar["time"],
+                        exit=fill,
+                        direction="short",
+                        pnl=pnl,
+                        r_multiple=(position["entry"] - fill) / position["r_dist"],
+                        bars_held=i - entry_idx,
+                    )
+                )
                 position = None
             elif bar["low"] <= position["tp"]:
                 pnl = (position["entry"] - position["tp"]) * position["size"]
                 pnl -= position["entry"] * position["size"] * round_trip_cost
                 cash += pnl
                 r = (position["entry"] - position["tp"]) / position["r_dist"]
-                trades.append(Trade(entry_time=bars[entry_idx]["time"], entry=position["entry"],
-                                    exit_time=bar["time"], exit=position["tp"],
-                                    direction="short", pnl=pnl, r_multiple=r, bars_held=i - entry_idx))
+                trades.append(
+                    Trade(
+                        entry_time=bars[entry_idx]["time"],
+                        entry=position["entry"],
+                        exit_time=bar["time"],
+                        exit=position["tp"],
+                        direction="short",
+                        pnl=pnl,
+                        r_multiple=r,
+                        bars_held=i - entry_idx,
+                    )
+                )
                 position = None
 
     # Force close at end
     if position is not None:
         exit_p = bars[-1]["close"]
         if position["direction"] == "long":
-            pnl = (exit_p - position["entry"]) * position["size"]
+            move = exit_p - position["entry"]
         else:
-            pnl = (position["entry"] - exit_p) * position["size"]
+            move = position["entry"] - exit_p
+        pnl = move * position["size"]
         pnl -= position["entry"] * position["size"] * round_trip_cost
         cash += pnl
-        trades.append(Trade(entry_time=bars[entry_idx]["time"], entry=position["entry"],
-                            exit_time=bars[-1]["time"], exit=exit_p,
-                            direction=position["direction"], pnl=pnl, r_multiple=0.0,
-                            bars_held=len(bars) - entry_idx))
+        trades.append(
+            Trade(
+                entry_time=bars[entry_idx]["time"],
+                entry=position["entry"],
+                exit_time=bars[-1]["time"],
+                exit=exit_p,
+                direction=position["direction"],
+                pnl=pnl,
+                r_multiple=move / position["r_dist"],
+                bars_held=len(bars) - entry_idx,
+            )
+        )
 
     if not trades:
         return {"error": "no trades generated", "sample": 0}
@@ -802,15 +1120,16 @@ def backtest(
         if dd > max_dd:
             max_dd = dd
 
-    rets = []
-    for i in range(1, len(equity_curve)):
-        if equity_curve[i - 1] > 0:
-            rets.append((equity_curve[i] - equity_curve[i - 1]) / equity_curve[i - 1])
+    rets = [
+        (equity_curve[i] - equity_curve[i - 1]) / equity_curve[i - 1]
+        for i in range(1, len(equity_curve))
+        if equity_curve[i - 1] > 0
+    ]
     sharpe = 0.0
     if len(rets) > 1:
         m = sum(rets) / len(rets)
         sd = (sum((r - m) ** 2 for r in rets) / len(rets)) ** 0.5
-        sharpe = (m / sd) * (252 ** 0.5) if sd > 0 else 0.0
+        sharpe = (m / sd) * (252**0.5) if sd > 0 else 0.0
 
     profit_factor = float("inf")
     if losses and sum(t.pnl for t in losses) != 0:
@@ -839,7 +1158,35 @@ def backtest(
 #   - the LLM meta-controller (must not approve if score < 50)
 #   - the live engine pre-filter (only call LLM if score >= 50)
 
-def compute_setup_score(backtest_result: dict, regime: str, strategy: str) -> dict:
+
+class SetupScore(TypedDict):
+    score: float
+    components: dict[str, float]
+    regime_match: bool
+    sample_sufficient: bool
+    win_rate: float
+    expectancy: float
+    profit_factor: float
+    sharpe: float
+    sample: int
+
+
+UNSCORED_SETUP: SetupScore = {
+    "score": 0.0,
+    "components": {},
+    "regime_match": False,
+    "sample_sufficient": False,
+    "win_rate": 0.0,
+    "expectancy": 0.0,
+    "profit_factor": 0.0,
+    "sharpe": 0.0,
+    "sample": 0,
+}
+
+
+def compute_setup_score(
+    backtest_result: dict, regime: str, strategy: str
+) -> SetupScore:
     """Return a deterministic 0-100 score plus the breakdown of how it was earned.
 
     Input: the dict returned by backtest() (must include win_rate, expectancy_r,
@@ -929,6 +1276,7 @@ def compute_setup_score(backtest_result: dict, regime: str, strategy: str) -> di
 # This is the standard vol-targeting formula (Moreira & Muir, AHL/Man) adapted
 # to per-trade sizing. Returns 0 if inputs are invalid.
 
+
 def calc_vol_targeted_size(
     account_equity: float,
     risk_pct: float,
@@ -971,6 +1319,7 @@ def calc_vol_targeted_size(
 # worse fills. We tag the current UTC hour so the meta-controller and the
 # A+ filter can down-weight off-hour setups.
 
+
 def tag_session(utc_hour: int | None = None) -> str:
     """Return one of 'LDN', 'LDN-NY', 'NY', 'off-hours' for the given UTC hour.
 
@@ -980,9 +1329,10 @@ def tag_session(utc_hour: int | None = None) -> str:
       17:00-21:59  NY        (post-overlap US session)
       22:00-06:59  off-hours (Asia / weekend, low edge for our symbols)
     """
-    from datetime import datetime, timezone as _tz
+    from datetime import datetime
+
     if utc_hour is None:
-        utc_hour = datetime.now(_tz.utc).hour
+        utc_hour = datetime.now(UTC).hour
     if 7 <= utc_hour <= 11:
         return "LDN"
     if 12 <= utc_hour <= 16:
@@ -999,9 +1349,9 @@ def session_multiplier(session: str) -> float:
     off-hours gets a hard penalty so the A+ filter naturally drops them.
     """
     return {
-        "LDN-NY":  1.10,
-        "LDN":     1.00,
-        "NY":      0.95,
+        "LDN-NY": 1.10,
+        "LDN": 1.00,
+        "NY": 0.95,
         "off-hours": 0.70,
     }.get(session, 1.0)
 
@@ -1018,7 +1368,9 @@ if __name__ == "__main__":
         if "error" in result:
             print(f"  {name:30s} — {result['error']}")
         else:
-            print(f"  {name:30s} — {result['sample']:3d} trades, "
-                  f"WR {result['win_rate']:.0%}, E {result['expectancy_r']:+.2f}R, "
-                  f"PF {result['profit_factor']:.2f}, Sharpe {result['sharpe']:+.2f}, "
-                  f"MaxDD {result['max_dd']:.0%}")
+            print(
+                f"  {name:30s} — {result['sample']:3d} trades, "
+                f"WR {result['win_rate']:.0%}, E {result['expectancy_r']:+.2f}R, "
+                f"PF {result['profit_factor']:.2f}, Sharpe {result['sharpe']:+.2f}, "
+                f"MaxDD {result['max_dd']:.0%}"
+            )

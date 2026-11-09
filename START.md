@@ -1,12 +1,12 @@
 # FCC Trader Workbench
 
-A local trading workbench that scans your watchlist with multiple strategies, runs AI agent votes on each setup, and executes on Capital.com (demo or live).
+A local trading workbench that scans your watchlist with multiple strategies, runs AI agent votes on each setup, and executes only on Capital.com's demo environment.
 
 ## Quick start
 
 1. **Double-click `Start FCC Trader.bat`** (in this folder)
 2. Chrome opens to `http://localhost:8081`
-3. **First run only**: a setup wizard asks for your Capital.com API key, login email, and password. The credentials are saved to `tools/.env` so you only enter them once.
+3. **First run only**: a login page asks for your Capital.com API key, login email, and password. After successful authentication, the credentials are saved to `tools/.env` so the next launch can restore the session automatically.
 4. Pick a watchlist and click **SCAN**
 
 That's it. Subsequent runs skip the wizard because your credentials are loaded from `tools/.env`.
@@ -74,7 +74,7 @@ The `[SIM]` tag means the order did not go to Capital.com (backend was offline o
 
 | Issue | Fix |
 |---|---|
-| Setup wizard keeps appearing | `tools/.env` is empty or missing — open it and confirm credentials are filled in |
+| Login page keeps appearing | Saved credentials are missing or invalid — log in again; successful login updates `tools/.env` |
 | "Login failed" | Check `CAPITAL_API_KEY`, `CAPITAL_LOGIN`, `CAPITAL_PASSWORD` are correct in `tools/.env` |
 | 401 `error.invalid.details` | `CAPITAL_LOGIN` is your email, NOT an MT5 account number. If your API key has **Custom password: YES**, the password is API-specific (saved at key creation), not your web password |
 | "not logged in" errors | Open Settings → Connection → click **Re-authenticate** |

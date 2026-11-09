@@ -8,14 +8,12 @@ If a paid provider is desired later, set NEWS_API_KEY and add a fetcher that
 calls it; the return shape is the same.
 """
 
-from __future__ import annotations
-
 import hashlib
 import logging
 import re
 import time
-from xml.etree import ElementTree as ET
 from typing import Any
+from xml.etree import ElementTree as ET
 
 import httpx
 
@@ -49,14 +47,14 @@ SYMBOL_FEEDS: dict[str, list[str]] = {
         "https://www.fxstreet.com/rss/news",
     ],
     # US equities
-    "AAPL":  ["https://feeds.reuters.com/reuters/financialNews"],
-    "TSLA":  ["https://feeds.reuters.com/reuters/financialNews"],
-    "NVDA":  ["https://feeds.reuters.com/reuters/financialNews"],
-    "MSFT":  ["https://feeds.reuters.com/reuters/financialNews"],
-    "AMZN":  ["https://feeds.reuters.com/reuters/financialNews"],
-    "META":  ["https://feeds.reuters.com/reuters/financialNews"],
+    "AAPL": ["https://feeds.reuters.com/reuters/financialNews"],
+    "TSLA": ["https://feeds.reuters.com/reuters/financialNews"],
+    "NVDA": ["https://feeds.reuters.com/reuters/financialNews"],
+    "MSFT": ["https://feeds.reuters.com/reuters/financialNews"],
+    "AMZN": ["https://feeds.reuters.com/reuters/financialNews"],
+    "META": ["https://feeds.reuters.com/reuters/financialNews"],
     "GOOGL": ["https://feeds.reuters.com/reuters/financialNews"],
-    "NFLX":  ["https://feeds.reuters.com/reuters/financialNews"],
+    "NFLX": ["https://feeds.reuters.com/reuters/financialNews"],
 }
 
 # Symbol -> search terms used to filter headlines that mention the instrument.
@@ -68,14 +66,14 @@ SYMBOL_TERMS: dict[str, list[str]] = {
     "NZDUSD": ["nzd/usd", "kiwi", "rbnz"],
     "USDJPY": ["usd/jpy", "yen", "boj", "ueda"],
     "USDCAD": ["usd/cad", "loonie", "boc"],
-    "AAPL":   ["apple", "aapl", "iphone", "tim cook", "cupertino"],
-    "TSLA":   ["tesla", "tsla", "musk", "cybertruck", "model y"],
-    "NVDA":   ["nvidia", "nvda", "huang", "gpu", "ai chip"],
-    "MSFT":   ["microsoft", "msft", "nadella", "azure", "copilot"],
-    "AMZN":   ["amazon", "amzn", "bezos", "aws", "jassy"],
-    "META":   ["meta", "facebook", "zuckerberg", "instagram", "threads"],
-    "GOOGL":  ["google", "alphabet", "googl", "gemini", "pichai"],
-    "NFLX":   ["netflix", "nflx"],
+    "AAPL": ["apple", "aapl", "iphone", "tim cook", "cupertino"],
+    "TSLA": ["tesla", "tsla", "musk", "cybertruck", "model y"],
+    "NVDA": ["nvidia", "nvda", "huang", "gpu", "ai chip"],
+    "MSFT": ["microsoft", "msft", "nadella", "azure", "copilot"],
+    "AMZN": ["amazon", "amzn", "bezos", "aws", "jassy"],
+    "META": ["meta", "facebook", "zuckerberg", "instagram", "threads"],
+    "GOOGL": ["google", "alphabet", "googl", "gemini", "pichai"],
+    "NFLX": ["netflix", "nflx"],
 }
 
 # Per-source title cap to bound prompt size.
@@ -122,18 +120,21 @@ def _parse_rss(xml_bytes: bytes, now_ts: float) -> list[dict[str, Any]]:
         if pub:
             try:
                 from email.utils import parsedate_to_datetime
+
                 dt = parsedate_to_datetime(pub)
                 if dt is not None:
                     age_min = max(0, int((now_ts - dt.timestamp()) / 60))
             except Exception:
                 age_min = 0
-        out.append({
-            "title": title,
-            "source": source_name,
-            "age_min": age_min,
-            "link": link,
-            "id": hashlib.md5((title + link).encode("utf-8")).hexdigest()[:12],
-        })
+        out.append(
+            {
+                "title": title,
+                "source": source_name,
+                "age_min": age_min,
+                "link": link,
+                "id": hashlib.md5((title + link).encode("utf-8")).hexdigest()[:12],
+            }
+        )
     return out
 
 
@@ -170,10 +171,11 @@ def fetch_news(symbol: str, hours: int = 4, max_items: int = 5) -> list[dict[str
 
     all_items: list[dict[str, Any]] = []
     for url in feeds:
-        items = _fetch_one(url)
-        for it in items[:_PER_SOURCE_CAP]:
-            if _symbol_matches(sym, it["title"]):
-                all_items.append(it)
+        all_items.extend(
+            it
+            for it in _fetch_one(url)[:_PER_SOURCE_CAP]
+            if _symbol_matches(sym, it["title"])
+        )
 
     # Sort by freshness.
     all_items.sort(key=lambda x: x.get("age_min", 9999))
@@ -183,7 +185,6 @@ def fetch_news(symbol: str, hours: int = 4, max_items: int = 5) -> list[dict[str
 
 
 if __name__ == "__main__":  # smoke test
-    import json
     for s in ("EURUSD", "AAPL", "TSLA", "USDJPY"):
         print(f"--- {s} ---")
         for h in fetch_news(s, max_items=3):

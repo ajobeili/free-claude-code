@@ -1,0 +1,100 @@
+//@version=6
+strategy("Casper SMC Opening-Range FVG", overlay = true, pyramiding = 0,
+     process_orders_on_close = false, commission_type = strategy.commission.percent,
+     commission_value = 0.01)
+
+model = input.string("Day trade", "Model", options = ["Scalp", "Day trade"])
+useMidpoint = input.bool(true, "Enter at 50% of FVG")
+
+rangeSession = model == "Scalp" ? "0930-0935" : "0930-0945"
+tradeSession = model == "Scalp" ? "0935-1100" : "0945-1100"
+rewardRisk = model == "Scalp" ? 3.0 : 2.0
+
+inOpeningRange = not na(time(timeframe.period, rangeSession, "America/New_York"))
+inTradeWindow = not na(time(timeframe.period, tradeSession, "America/New_York"))
+newOpeningRange = inOpeningRange and not inOpeningRange[1]
+
+var float openingHigh = na
+var float openingLow = na
+var bool tradedToday = false
+var float bullTop = na
+var float bullBottom = na
+var float bullStop = na
+var int bullCreatedBar = na
+var float bearTop = na
+var float bearBottom = na
+var float bearStop = na
+var int bearCreatedBar = na
+var bool longOrderPending = false
+var bool shortOrderPending = false
+
+if newOpeningRange
+    openingHigh := high
+    openingLow := low
+    tradedToday := false
+    bullTop := na
+    bullBottom := na
+    bullStop := na
+    bullCreatedBar := na
+    bearTop := na
+    bearBottom := na
+    bearStop := na
+    bearCreatedBar := na
+    longOrderPending := false
+    shortOrderPending := false
+    strategy.cancel("Long")
+    strategy.cancel("Short")
+else if inOpeningRange
+    openingHigh := math.max(openingHigh, high)
+    openingLow := math.min(openingLow, low)
+
+rangeReady = not inOpeningRange and not na(openingHigh) and not na(openingLow)
+newPosition = strategy.position_size != 0 and strategy.position_size[1] == 0
+if newPosition
+    tradedToday := true
+    longOrderPending := false
+    shortOrderPending := false
+
+// Do not leave a limit order working outside the setup window.
+tradeWindowJustEnded = not inTradeWindow and inTradeWindow[1]
+if tradeWindowJustEnded
+    strategy.cancel("Long")
+    strategy.cancel("Short")
+    longOrderPending := false
+    shortOrderPending := false
+
+// A bullish FVG has the third candle's low above the first candle's high.
+// Requiring the whole gap beyond the opening range confirms the breakout.
+bullishFvg = rangeReady and inTradeWindow and low > high[2] and high[2] > openingHigh
+bearishFvg = rangeReady and inTradeWindow and high < low[2] and low[2] < openingLow
+
+if bullishFvg and not tradedToday and not longOrderPending and not shortOrderPending
+    bullBottom := high[2]
+    bullTop := low
+    bullStop := low[2]
+    bullCreatedBar := bar_index
+    bullEntry = useMidpoint ? (bullTop + bullBottom) / 2.0 : bullTop
+    bullTarget = bullEntry + (bullEntry - bullStop) * rewardRisk
+    if bullEntry > bullStop
+        strategy.entry("Long", strategy.long, limit = bullEntry)
+        strategy.exit("Long Exit", "Long", stop = bullStop, limit = bullTarget)
+        longOrderPending := true
+
+if bearishFvg and not tradedToday and not longOrderPending and not shortOrderPending
+    bearBottom := high
+    bearTop := low[2]
+    bearStop := high[2]
+    bearCreatedBar := bar_index
+    bearEntry = useMidpoint ? (bearTop + bearBottom) / 2.0 : bearBottom
+    bearTarget = bearEntry - (bearStop - bearEntry) * rewardRisk
+    if bearEntry < bearStop
+        strategy.entry("Short", strategy.short, limit = bearEntry)
+        strategy.exit("Short Exit", "Short", stop = bearStop, limit = bearTarget)
+        shortOrderPending := true
+
+plot(openingHigh, "Opening range high", color = color.lime, style = plot.style_linebr)
+plot(openingLow, "Opening range low", color = color.red, style = plot.style_linebr)
+plot(bullTop, "Bullish FVG top", color = color.new(color.green, 30), style = plot.style_linebr)
+plot(bullBottom, "Bullish FVG bottom", color = color.new(color.green, 30), style = plot.style_linebr)
+plot(bearTop, "Bearish FVG top", color = color.new(color.red, 30), style = plot.style_linebr)
+plot(bearBottom, "Bearish FVG bottom", color = color.new(color.red, 30), style = plot.style_linebr)

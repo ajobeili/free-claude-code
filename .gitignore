@@ -8,3 +8,10 @@ __pycache__/
 .venv/
 python-portable/
 python-embed.zip
+
+# Private runtime state is never source.
+**/.env
+*.sqlite3*
+*.db*
+*.log
+tools/.planner-ai.json

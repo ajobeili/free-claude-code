@@ -1,0 +1,149 @@
+{
+  "label": "synthetic",
+  "description": "Invented prices, not a backtest of a traded market.",
+  "cases": [
+    {
+      "run_id": "gold_return",
+      "market": "GOLD",
+      "starts_at_seconds": 3,
+      "terminal_by_variant": {
+        "confirmed-90": "matched",
+        "unfiltered-90": "matched",
+        "confirmed-180": "matched",
+        "unfiltered-180": "matched"
+      },
+      "followups": "incomplete: deliberately sparse target quotes",
+      "notes": "gold_return"
+    },
+    {
+      "run_id": "oil_return",
+      "market": "OIL_CRUDE",
+      "starts_at_seconds": 3,
+      "terminal_by_variant": {
+        "confirmed-90": "matched",
+        "unfiltered-90": "matched",
+        "confirmed-180": "matched",
+        "unfiltered-180": "matched"
+      },
+      "followups": "incomplete: deliberately sparse target quotes",
+      "notes": "oil_return"
+    },
+    {
+      "run_id": "exact_90",
+      "market": "GOLD",
+      "starts_at_seconds": 3,
+      "terminal_by_variant": {
+        "confirmed-90": "matched",
+        "unfiltered-90": "matched",
+        "confirmed-180": "matched",
+        "unfiltered-180": "matched"
+      },
+      "followups": "incomplete: deliberately sparse target quotes",
+      "notes": "exact_90"
+    },
+    {
+      "run_id": "exact_180",
+      "market": "GOLD",
+      "starts_at_seconds": 3,
+      "terminal_by_variant": {
+        "confirmed-90": "expired",
+        "unfiltered-90": "expired",
+        "confirmed-180": "matched",
+        "unfiltered-180": "matched"
+      },
+      "followups": "incomplete: deliberately sparse target quotes",
+      "notes": "exact_180"
+    },
+    {
+      "run_id": "late_120",
+      "market": "GOLD",
+      "starts_at_seconds": 3,
+      "terminal_by_variant": {
+        "confirmed-90": "expired",
+        "unfiltered-90": "expired",
+        "confirmed-180": "matched",
+        "unfiltered-180": "matched"
+      },
+      "followups": "incomplete: deliberately sparse target quotes",
+      "notes": "late_120"
+    },
+    {
+      "run_id": "no_signal",
+      "market": "GOLD",
+      "starts_at_seconds": null,
+      "terminal_by_variant": {
+        "confirmed-90": null,
+        "unfiltered-90": null,
+        "confirmed-180": null,
+        "unfiltered-180": null
+      },
+      "followups": "incomplete: deliberately sparse target quotes",
+      "notes": "no_signal"
+    },
+    {
+      "run_id": "missing_counterpart",
+      "market": "GOLD",
+      "starts_at_seconds": 3,
+      "terminal_by_variant": {
+        "confirmed-90": null,
+        "unfiltered-90": "matched",
+        "confirmed-180": null,
+        "unfiltered-180": "matched"
+      },
+      "followups": "incomplete: deliberately sparse target quotes",
+      "notes": "missing_counterpart"
+    },
+    {
+      "run_id": "wrong_direction",
+      "market": "GOLD",
+      "starts_at_seconds": 3,
+      "terminal_by_variant": {
+        "confirmed-90": "context_failed",
+        "unfiltered-90": "matched",
+        "confirmed-180": "context_failed",
+        "unfiltered-180": "matched"
+      },
+      "followups": "incomplete: deliberately sparse target quotes",
+      "notes": "wrong_direction"
+    },
+    {
+      "run_id": "receipt_order_expiry",
+      "market": "GOLD",
+      "starts_at_seconds": 3,
+      "terminal_by_variant": {
+        "confirmed-90": "expired",
+        "unfiltered-90": "expired",
+        "confirmed-180": "context_failed",
+        "unfiltered-180": "matched"
+      },
+      "followups": "incomplete: deliberately sparse target quotes",
+      "notes": "Receipt order wins over source timestamps."
+    },
+    {
+      "run_id": "interruption",
+      "market": "GOLD",
+      "starts_at_seconds": 3,
+      "terminal_by_variant": {
+        "confirmed-90": "interrupted",
+        "unfiltered-90": "interrupted",
+        "confirmed-180": "interrupted",
+        "unfiltered-180": "interrupted"
+      },
+      "followups": "incomplete: deliberately sparse target quotes",
+      "notes": "interruption"
+    },
+    {
+      "run_id": "late_after_180",
+      "market": "GOLD",
+      "starts_at_seconds": 3,
+      "terminal_by_variant": {
+        "confirmed-90": "expired",
+        "unfiltered-90": "expired",
+        "confirmed-180": "expired",
+        "unfiltered-180": "expired"
+      },
+      "followups": "incomplete: deliberately sparse target quotes",
+      "notes": "late_after_180"
+    }
+  ]
+}

@@ -146,6 +146,23 @@ body {
 .btn:active { transform: scale(0.97); }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+.btn-structure, .btn-structure:visited {
+  background: #7355e8;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 750;
+  min-height: 42px;
+  box-sizing: border-box;
+  padding: 10px 18px;
+  border: 1px solid #ab96ff;
+  border-radius: 8px;
+  text-decoration: none;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 3px rgb(115 85 232 / 16%);
+}
+.btn-structure:hover { background: #6244d5; opacity: 1; }
+.btn-structure:focus-visible { outline: 3px solid #c5b9ff; outline-offset: 3px; }
+
 .btn-scan {
   background: var(--accent);
   color: #000;
@@ -297,6 +314,18 @@ body {
   font-size: 10px;
   color: var(--text3);
 }
+.cockpit-tf {
+  background: var(--surface3);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  cursor: pointer;
+  outline: none;
+}
+.cockpit-tf:hover { border-color: var(--accent); }
 .cockpit-body { padding: 14px; }
 
 .mode-toggle {
@@ -323,6 +352,26 @@ body {
 .mode-toggle button.active { background: var(--accent); color: #000; }
 .mode-toggle button.active.live { background: var(--short); }
 .mode-toggle button.active.demo { background: var(--neutral); color: #000; }
+.auto-demo-toggle {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--surface3);
+  color: var(--text2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+.auto-demo-toggle.active {
+  background: var(--neutral);
+  border-color: var(--neutral);
+  color: #000;
+}
+.auto-demo-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 
 .active-signal {
   border: 2px solid var(--accent);
@@ -383,6 +432,18 @@ body {
 }
 .active-signal .reasons .head { color: var(--text3); font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
 .active-signal .reasons ul { margin: 4px 0 0 16px; padding: 0; }
+.active-signal .auto-status {
+  margin-top: 8px;
+  padding: 7px 9px;
+  border-radius: 5px;
+  background: var(--neutral-dim);
+  color: var(--neutral);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.active-signal .auto-status.submitted { background: var(--long-dim); color: var(--long); }
+.active-signal .auto-status.rejected,
+.active-signal .auto-status.skipped { background: var(--short-dim); color: var(--short); }
 .active-signal .actions { display: flex; gap: 8px; margin-top: 10px; }
 .active-signal .actions button {
   flex: 1;
@@ -1005,7 +1066,8 @@ tr:last-child td { border-bottom: none; }
 
 <!-- HEADER -->
 <div class="header">
-  <div class="logo">FCC<span>/trader</span></div>
+  <a href="/" class="btn" style="color:var(--text);text-decoration:none;border:1px solid var(--border)" aria-label="Home apps">▦ Apps</a><div class="logo">FCC<span>/trader</span></div>
+  <a class="btn btn-structure" href="/structure"><span aria-hidden="true">↗</span> Structure Scan</a>
   <div class="header-actions">
     <input class="watchlist-input" id="watchlist" value="EURUSD,GBPUSD,AUDUSD,NZDUSD,XAUUSD,USDJPY,BTCUSD,ETHUSD,NVDA,AAPL,TSLA,META" placeholder="Comma-separated symbols">
     <select class="tf-select" id="timeframe" title="Timeframe — MINUTE bars enable scalping strategy" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-family:var(--font-mono);font-size:12px">
@@ -1021,6 +1083,10 @@ tr:last-child td { border-bottom: none; }
       <span class="spinner"></span>
       <span class="btn-label">&#9654; SCAN</span>
     </button>
+    <label title="Run the configured AI meta-controller; slower and requires fcc-server" style="display:flex;align-items:center;gap:5px;color:var(--text2);font-family:var(--font-mono);font-size:11px;white-space:nowrap">
+      <input type="checkbox" id="useAi" style="accent-color:var(--accent)">
+      Use AI
+    </label>
     <button class="btn btn-quick" id="quickScanBtn" onclick="quickScan()" title="3 fastest strategies only — for quick action">
       <span class="spinner"></span>
       <span class="btn-label">&#9889; QUICK</span>
@@ -1029,11 +1095,12 @@ tr:last-child td { border-bottom: none; }
   <div class="header-right">
     <div class="account-pill" id="accountPill">
       <span>Balance</span>
-      <span class="val" id="balance">$10,000</span>
-      <span class="val pnl-pos" id="pnl">+$124.50</span>
+      <span class="val" id="balance">—</span>
+      <span class="val" id="pnl">—</span>
     </div>
     <button class="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme"></button>
     <button class="settings-btn" onclick="openSettings()" aria-label="Settings" title="Settings" style="background:transparent;border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:4px 8px;cursor:pointer;font-family:var(--font-mono);font-size:12px;margin-left:6px">&#9881;</button>
+    <button class="settings-btn" onclick="logout()" title="Log out" style="background:transparent;border:1px solid var(--border);color:var(--short);border-radius:6px;padding:4px 8px;cursor:pointer;font-family:var(--font-mono);font-size:12px;margin-left:6px">Logout</button>
   </div>
 </div>
 
@@ -1051,17 +1118,25 @@ tr:last-child td { border-bottom: none; }
     <div class="cockpit-head">
       <span class="status-dot" id="cockpitDot"></span>
       <span class="title">Live Engine</span>
+      <select class="cockpit-tf" id="cockpitTf" title="Live engine timeframe">
+        <option value="MINUTE">1m</option>
+        <option value="MINUTE_5" selected>5m</option>
+        <option value="MINUTE_15">15m</option>
+        <option value="HOUR">1h</option>
+        <option value="HOUR_4">4h</option>
+        <option value="DAY">D</option>
+      </select>
       <div class="mode-toggle" id="modeToggle">
         <button data-mode="offline" class="active">OFFLINE</button>
         <button data-mode="demo">DEMO</button>
-        <button data-mode="live">LIVE</button>
       </div>
+      <button class="auto-demo-toggle" id="autoDemoToggle" title="Demo-only automatic execution">AUTO DEMO</button>
       <span class="meta" id="cockpitMeta">last tick: —</span>
     </div>
     <div class="cockpit-body">
       <div id="activeSignalArea">
         <div class="active-signal empty" id="activeSignalEmpty">
-          engine offline — flip to DEMO or LIVE to start scanning
+          engine offline — switch to DEMO to start scanning
         </div>
       </div>
     </div>
@@ -1085,38 +1160,34 @@ tr:last-child td { border-bottom: none; }
   </div>
 </div>
 
-<!-- SETUP WIZARD OVERLAY (only shown on first run) -->
+<!-- LOGIN OVERLAY -->
 <div id="setupOverlay" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:9000;align-items:center;justify-content:center;flex-direction:column;padding:40px">
   <div style="max-width:480px;width:90%;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:32px;box-shadow:0 8px 32px rgba(0,0,0,0.3)">
-    <div style="font-size:24px;font-weight:700;margin-bottom:6px">Welcome to FCC Trader</div>
-    <div style="font-size:13px;color:var(--text2);margin-bottom:24px;font-family:var(--font-mono)">First-time setup — connect your Capital.com account.</div>
+    <div style="font-size:24px;font-weight:700;margin-bottom:6px">FCC Trader Login</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:24px;font-family:var(--font-mono)">Sign in to Capital.com to continue.</div>
     <div style="font-size:11px;color:var(--text3);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:18px;font-family:var(--font-mono)">
       Get your API key at <code style="color:var(--accent)">capital.com/api-integration</code> after enabling API access on your account.
     </div>
     <div class="settings-row">
-      <label>CAPITAL_API_KEY</label>
-      <input type="password" id="setup_api_key" placeholder="" autocomplete="off">
+      <label for="setup_login">CAPITAL_LOGIN (email)</label>
+      <input type="email" id="setup_login" name="username" placeholder="" autocomplete="username">
     </div>
     <div class="settings-row">
-      <label>CAPITAL_LOGIN</label>
-      <input type="text" id="setup_login" placeholder="" autocomplete="off">
+      <label for="setup_password">CAPITAL_PASSWORD</label>
+      <input type="password" id="setup_password" name="password" placeholder="" autocomplete="current-password">
     </div>
     <div class="settings-row">
-      <label>CAPITAL_PASSWORD</label>
-      <input type="password" id="setup_password" placeholder="" autocomplete="off">
-    </div>
-    <div class="settings-row">
-      <label>CAPITAL_ACCOUNT_ID</label>
-      <input type="text" id="setup_account_id" placeholder="" autocomplete="off">
+      <label for="setup_api_key">CAPITAL_API_KEY</label>
+      <input type="password" id="setup_api_key" name="capital_api_token" placeholder="Paste your Capital.com API key" autocomplete="off" data-lpignore="true" data-1p-ignore="true" spellcheck="false">
+      <span class="hint">Paste the API key from Capital.com API integrations, not your password. Check this field if your browser autofills it.</span>
     </div>
     <div class="settings-row">
       <label>CAPITAL_ENVIRONMENT</label>
       <select id="setup_environment">
         <option value="demo">demo (paper trading)</option>
-        <option value="live">live (real money)</option>
       </select>
     </div>
-    <button id="setupSubmitBtn" onclick="submitSetup()" style="width:100%;margin-top:8px;padding:12px;background:var(--long);color:#000;border:none;border-radius:6px;font-family:var(--font-mono);font-size:13px;font-weight:600;cursor:pointer">Connect &amp; Start Trading</button>
+    <button id="setupSubmitBtn" onclick="submitSetup()" style="width:100%;margin-top:8px;padding:12px;background:var(--long);color:#000;border:none;border-radius:6px;font-family:var(--font-mono);font-size:13px;font-weight:600;cursor:pointer">Login &amp; Continue</button>
     <div id="setupError" style="margin-top:12px;font-size:11px;color:var(--short);font-family:var(--font-mono);display:none"></div>
   </div>
 </div>
@@ -1128,36 +1199,36 @@ tr:last-child td { border-bottom: none; }
   <div class="account-bar" id="accountBar">
     <div class="account-stat">
       <div class="label">Balance</div>
-      <div class="value" id="acctBalance">$10,000</div>
+      <div class="value" id="acctBalance">—</div>
     </div>
     <div class="account-stat">
       <div class="label">Equity</div>
-      <div class="value" id="acctEquity">$10,124</div>
+      <div class="value" id="acctEquity">—</div>
     </div>
     <div class="account-stat">
       <div class="label">Open Positions</div>
-      <div class="value" id="acctPos">1</div>
+      <div class="value" id="acctPos">—</div>
     </div>
     <div class="account-stat">
-      <div class="label">Today's P&L</div>
-      <div class="value" id="acctPnl" style="color:var(--long)">+$124.50</div>
+      <div class="label">Broker P&amp;L</div>
+      <div class="value" id="acctPnl">—</div>
     </div>
     <div class="account-stat">
       <div class="label">Risk / Trade</div>
       <div class="value" id="acctRisk">1.0%</div>
     </div>
     <div class="account-stat">
-      <div class="label">MT5 Mode</div>
-      <div class="value" id="mt5Mode" style="color:var(--accent)">DEMO</div>
+      <div class="label">Broker Mode</div>
+      <div class="value" id="mt5Mode" style="color:var(--accent)">DEMO ONLY</div>
     </div>
   </div>
 
   <!-- RISK CONTROL -->
   <div class="risk-control">
     <span class="risk-label">Risk per trade:</span>
-    <input type="range" class="risk-slider" id="riskSlider" min="0.25" max="3" step="0.25" value="1.0" oninput="updateRisk(this.value)">
-    <span class="risk-val" id="riskVal">1.0%</span>
-    <span id="riskPerTradeLabel" style="font-size:11px;color:var(--text3);font-family:var(--font-mono)">($100/trade on $10K)</span>
+    <input type="range" class="risk-slider" id="riskSlider" min="0.25" max="0.5" step="0.25" value="0.5" oninput="updateRisk(this.value)">
+    <span class="risk-val" id="riskVal">0.5%</span>
+    <span id="riskPerTradeLabel" style="font-size:11px;color:var(--text3);font-family:var(--font-mono)">(waiting for demo account)</span>
   </div>
 
   <!-- SETUPS TABLE -->
@@ -1226,40 +1297,19 @@ tr:last-child td { border-bottom: none; }
 
     <!-- Connection tab -->
     <div class="settings-pane active" data-pane="connection">
-      <div class="settings-warn">&#9888; Server is local-only. Do not expose port 8081 publicly — these endpoints allow writing credentials without auth.</div>
-      <div class="settings-row">
-        <label>CAPITAL_API_KEY</label>
-        <input type="password" id="set_capital_api_key" placeholder="leave blank to keep current">
-        <span class="hint" id="set_capital_api_key_status"></span>
-      </div>
-      <div class="settings-row">
-        <label>CAPITAL_LOGIN</label>
-        <input type="text" id="set_capital_login" placeholder="leave blank to keep current">
-        <span class="hint" id="set_capital_login_status"></span>
-      </div>
-      <div class="settings-row">
-        <label>CAPITAL_PASSWORD</label>
-        <input type="password" id="set_capital_password" placeholder="leave blank to keep current">
-        <span class="hint" id="set_capital_password_status"></span>
-      </div>
-      <div class="settings-row">
-        <label>CAPITAL_ACCOUNT_ID</label>
-        <input type="text" id="set_capital_account_id" placeholder="optional, leave blank to keep current">
-        <span class="hint" id="set_capital_account_id_status"></span>
-      </div>
+      <div class="settings-warn">&#9888; Credentials are entered on the login page and are never exposed in Settings. The preferred Capital.com account is selected automatically.</div>
       <div class="settings-row">
         <label>CAPITAL_ENVIRONMENT</label>
         <select id="set_capital_environment">
           <option value="demo">demo (paper)</option>
-          <option value="live">live (real money)</option>
         </select>
       </div>
       <div class="settings-row">
-        <span class="hint">Credentials are saved to <code>tools/.env</code> on Save and persist across restarts.</span>
+        <span class="hint">A successful login is remembered for the next server start.</span>
       </div>
       <div class="settings-row" style="flex-direction:row;gap:8px;align-items:center">
         <button class="btn btn-confirm" id="reauthBtn" onclick="reauthenticate()" style="font-size:11px;padding:6px 12px">Re-authenticate</button>
-        <span class="hint" id="reauthStatus">Use this if the session expired (e.g. server was killed). Re-runs the broker login with the saved credentials.</span>
+        <span class="hint" id="reauthStatus">Use this if the broker session expires.</span>
       </div>
     </div>
 
@@ -1280,11 +1330,11 @@ tr:last-child td { border-bottom: none; }
       </div>
       <div class="settings-row">
         <label>Default risk per trade (%)</label>
-        <input type="number" id="set_risk_pct" min="0.25" max="10" step="0.25">
+        <input type="number" id="set_risk_pct" min="0.25" max="0.5" step="0.25">
       </div>
       <div class="settings-row">
         <label>Risk slider max (%)</label>
-        <input type="number" id="set_risk_max" min="1" max="20" step="0.5">
+        <input type="number" id="set_risk_max" min="0.5" max="0.5" step="0.5" value="0.5" disabled>
       </div>
       <div class="settings-row">
         <span class="hint">Saved in browser localStorage. Applies on next page load.</span>
@@ -1305,19 +1355,26 @@ tr:last-child td { border-bottom: none; }
   </div>
 </div>
 
-<script>
+<script src="/module_activity.js"></script><script>
 // ─── STATE ───────────────────────────────────────────────────────────────────
 let setups = [];
 let expandedId = null;
 let sortCol = 'confidence';
 let sortAsc = false;
 let pendingOrder = null;
-let account = {
+const SETTINGS_DEFAULTS = {
+  watchlist: 'EURUSD,GBPUSD,AUDUSD,NZDUSD,XAUUSD,USDJPY,BTCUSD,ETHUSD,NVDA,AAPL,TSLA,META',
   balance: 10000,
-  equity: 10124.50,
-  positions: 1,
-  pnl: 124.50,
-  riskPct: 0.01,
+  riskPct: 0.5,
+  riskMax: 0.5,
+};
+let planningBalance = SETTINGS_DEFAULTS.balance;
+let account = {
+  balance: null,
+  equity: null,
+  positions: null,
+  pnl: null,
+  riskPct: 0.005,
   mt5Demo: true,
 };
 
@@ -1467,7 +1524,7 @@ function renderSetups() {
       </td>
       <td>
         <span class="chip chip-${s.consensus}">${s.consensus}</span>
-        <span style="font-family:var(--font-mono);font-size:11px;margin-left:4px;color:var(--accent)">${s.aiScore}</span>
+        <span style="font-family:var(--font-mono);font-size:11px;margin-left:4px;color:var(--accent)">${s.aiEvaluated ? s.aiScore : 'AI off'}</span>
       </td>
       <td onclick="event.stopPropagation()">
         <button class="btn btn-exec" onclick="openConfirm('${s.id}')">EXEC</button>
@@ -1480,7 +1537,7 @@ function renderSetups() {
           <div class="s-item"><span class="s-key">Entry:</span><span class="s-val">${fmt(s.entry)}</span></div>
           <div class="s-item"><span class="s-key">SL:</span><span class="s-val" style="color:var(--error)">${fmt(s.stopLoss)}</span></div>
           <div class="s-item"><span class="s-key">TP:</span><span class="s-val" style="color:var(--long)">${fmt(s.takeProfit)}</span></div>
-          <div class="s-item"><span class="s-key">Risk:</span><span class="s-val" style="color:var(--error)">$${Math.round(account.balance * account.riskPct)}</span></div>
+          <div class="s-item"><span class="s-key">Planning risk:</span><span class="s-val" style="color:var(--error)">$${Math.round(planningBalance * account.riskPct)}</span></div>
           <div class="s-item"><span class="s-key">WR:</span><span class="s-val">${Math.round(s.backtest.win_rate * 100)}%</span></div>
           <div class="s-item"><span class="s-key">E:</span><span class="s-val" style="color:${s.backtest.expectancy >= 0 ? 'var(--long)' : 'var(--error)'}">${s.backtest.expectancy >= 0 ? '+' : ''}${s.backtest.expectancy.toFixed(2)}R</span></div>
           <div class="s-item"><span class="s-key">Backtest:</span><span class="s-val">${s.backtest.sample} trades</span></div>
@@ -1514,7 +1571,7 @@ function renderSetups() {
           <div class="exec-info">
             <span>Final decision:</span>
             <strong style="color:${s.consensus === 'approve' ? 'var(--long)' : s.consensus === 'reject' ? 'var(--short)' : 'var(--neutral)'}">${s.consensus.toUpperCase()}</strong>
-            <span>| AI Score: <strong style="color:var(--accent)">${s.aiScore}/100</strong></span>
+            <span>| AI Score: <strong style="color:var(--accent)">${s.aiEvaluated ? `${s.aiScore}/100` : 'not evaluated'}</strong></span>
             <span>| ${Math.round(s.consensus === 'approve' ? 100 : s.consensus === 'modify' ? 60 : 20)}% conviction</span>
           </div>
           <button class="btn btn-exec" onclick="openConfirm('${s.id}')" style="background:var(--accent);color:#000;font-weight:700">EXECUTE</button>
@@ -1544,7 +1601,11 @@ function colorAge(ageSec) {
   return { dot: '⚫', color: 'var(--text3)', label: 'offline' };
 }
 
+let tickPollBusy = false;
 async function pollTicks() {
+  if (tickPollBusy || document.hidden) return;
+  tickPollBusy = true;
+  try {
   const cells = document.querySelectorAll('.tick-cell');
   if (!cells.length) return;
   // Group by epic so we only fetch each symbol once per cycle.
@@ -1556,15 +1617,25 @@ async function pollTicks() {
   });
   await Promise.all([...byEpic.entries()].map(async ([epic, cs]) => {
     try {
-      const r = await fetch(`/api/tick?epic=${encodeURIComponent(epic)}`, { signal: AbortSignal.timeout(4000) });
+      const r = await fetch(`/api/tick?epic=${encodeURIComponent(epic)}`, { signal: AbortSignal.timeout(10000) });
+      if (r.status === 401) {
+        window.location.reload();
+        return;
+      }
       const data = await r.json();
+      if (!r.ok || data.error) throw new Error(data.detail || data.error || `Quote request failed (${r.status})`);
+      if (!Number.isFinite(data.bid) || !Number.isFinite(data.offer)) throw new Error('Broker returned no quote');
       tickCache.set(epic, { ...data, fetchedAt: Date.now() });
     } catch (err) {
-      // Mark all cells for this epic as offline on fetch failure
-      const cached = tickCache.get(epic);
+      // Preserve the failure until a fresh quote succeeds.
+      tickCache.delete(epic);
       cs.forEach(c => {
         const status = c.querySelector('.tick-status');
-        if (status) status.innerHTML = `<span style="color:var(--short)">⚫ err</span>`;
+        if (status) {
+          status.style.color = 'var(--short)';
+          status.textContent = err.name === 'TimeoutError' ? 'Quote timed out' : 'Quote unavailable';
+          status.title = err.message;
+        }
       });
       return;
     }
@@ -1586,6 +1657,7 @@ async function pollTicks() {
       }
     });
   }));
+  } finally { tickPollBusy = false; }
 }
 
 function startTickPolling() {
@@ -1637,8 +1709,8 @@ async function runScan() {
   btn.classList.add('loading');
   btn.disabled = true;
 
-  // Try real backend; fall back to mock if unreachable
-  let usedMock = false;
+  // Show real backend failures; never manufacture scan results.
+
   try {
     const resp = await fetch('/api/scan', {
       method: 'POST',
@@ -1647,7 +1719,7 @@ async function runScan() {
         symbols,
         timeframe: document.getElementById('timeframe')?.value || 'HOUR',
         risk_pct: account.riskPct,
-        use_ai: false,  // default off — instant scans. Set true to enable AI ranking.
+        use_ai: document.getElementById('useAi')?.checked === true,
       }),
       signal: AbortSignal.timeout(60000),
     });
@@ -1655,28 +1727,37 @@ async function runScan() {
       const data = await resp.json();
       setups = (data.setups || []).map(s => ({
         ...s,
-        consensus: s.consensus || 'approve',
-        aiScore: s.aiScore || 50,
-        backtest: s.backtest || { win_rate: 0.5, sample: 50, expectancy: 0 },
+        consensus: s.aiEvaluated ? (s.consensus || 'pass') : 'not run',
+        aiEvaluated: Boolean(s.aiEvaluated),
+        aiScore: s.aiEvaluated ? s.aiScore : null,
+        backtest: s.backtest || { win_rate: 0, sample: 0, expectancy: 0 },
       }));
       document.getElementById('scanTime').textContent =
         `Scanned ${data.scanned} (${symbols.length} sym × ${data.scanned / symbols.length} strat) • ${data.scan_time_ms}ms • ${new Date().toLocaleTimeString()}`;
     } else {
-      throw new Error(`HTTP ${resp.status}`);
+      if (resp.status === 401) {
+        window.location.reload();
+        return;
+      }
+      const error = await resp.json().catch(() => ({}));
+      throw new Error(error.detail || `HTTP ${resp.status}`);
     }
   } catch (err) {
-    console.warn('Backend unavailable, using local mock:', err);
-    usedMock = true;
-    await new Promise(r => setTimeout(r, 1500));
-    setups = generateSetups(symbols);
-    document.getElementById('scanTime').textContent =
-      `OFFLINE mock • ${new Date().toLocaleTimeString()} — start scan_server.py for live data`;
+    setups = [];
+    renderSetups();
+    const message = err.name === 'TimeoutError' ? 'Scan timed out. No results generated.' : `Scan failed: ${err.message}`;
+    document.getElementById('scanTime').textContent = message;
+    showToast(message, 'error');
+    return;
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
   }
 
   renderSetups();
   btn.classList.remove('loading');
   btn.disabled = false;
-  showToast(`${usedMock ? '[MOCK] ' : ''}Found ${setups.length} setups`, usedMock ? 'error' : 'success');
+  showToast(`Found ${setups.length} setups`, 'success');
 }
 
 // Quick scan: ALL strategies, no AI — runs in <1s. The real speedup comes from use_ai=false,
@@ -1691,7 +1772,7 @@ async function quickScan() {
   btn.classList.add('loading');
   btn.disabled = true;
 
-  let usedMock = false;
+
   try {
     const resp = await fetch('/api/scan', {
       method: 'POST',
@@ -1708,27 +1789,37 @@ async function quickScan() {
       const data = await resp.json();
       setups = (data.setups || []).map(s => ({
         ...s,
-        consensus: s.consensus || 'approve',
-        aiScore: s.aiScore || 50,
-        backtest: s.backtest || { win_rate: 0.5, sample: 50, expectancy: 0 },
+        consensus: s.aiEvaluated ? (s.consensus || 'pass') : 'not run',
+        aiEvaluated: Boolean(s.aiEvaluated),
+        aiScore: s.aiEvaluated ? s.aiScore : null,
+        backtest: s.backtest || { win_rate: 0, sample: 0, expectancy: 0 },
       }));
       document.getElementById('scanTime').textContent =
         `⚡ Quick: ${data.scanned} • ${data.scan_time_ms}ms • ${new Date().toLocaleTimeString()}`;
     } else {
-      throw new Error(`HTTP ${resp.status}`);
+      if (resp.status === 401) {
+        window.location.reload();
+        return;
+      }
+      const error = await resp.json().catch(() => ({}));
+      throw new Error(error.detail || `HTTP ${resp.status}`);
     }
   } catch (err) {
-    console.warn('Quick scan failed:', err);
-    usedMock = true;
-    setups = generateSetups(symbols);
-    document.getElementById('scanTime').textContent =
-      `⚡ OFFLINE mock • ${new Date().toLocaleTimeString()}`;
+    setups = [];
+    renderSetups();
+    const message = err.name === 'TimeoutError' ? 'Scan timed out. No results generated.' : `Scan failed: ${err.message}`;
+    document.getElementById('scanTime').textContent = message;
+    showToast(message, 'error');
+    return;
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
   }
 
   renderSetups();
   btn.classList.remove('loading');
   btn.disabled = false;
-  showToast(`⚡ ${usedMock ? '[MOCK] ' : ''}Found ${setups.length} setups`, usedMock ? 'error' : 'success');
+  showToast(`Found ${setups.length} setups`, 'success');
 }
 
 // ─── ORDER EXECUTION ───────────────────────────────────────────────────────────
@@ -1748,33 +1839,9 @@ function getInstrumentType(symbol) {
 function openConfirm(id) {
   const s = setups.find(x => x.id === id);
   if (!s) return;
-  const riskDollars = account.balance * account.riskPct;
   const slDist = Math.abs(s.entry - s.stopLoss);
   if (slDist <= 0) { showToast('Invalid stop-loss distance', 'error'); return; }
-
-  const type = getInstrumentType(s.symbol);
-  let suggestedSize;
-  if (type === 'forex') {
-    // JPY pairs (USDJPY, EURJPY, GBPJPY) have 2 decimal places for pips (0.01)
-    // Other forex pairs have 4 decimal places for pips (0.0001)
-    const isJPYpair = s.symbol.endsWith('JPY');
-    const pipMultiplier = isJPYpair ? 100 : 10000;
-    const slPips = slDist * pipMultiplier;
-    suggestedSize = riskDollars / (slPips * 10);
-  } else if (type === 'crypto') {
-    suggestedSize = riskDollars / slDist;
-  } else {
-    suggestedSize = riskDollars / slDist;
-  }
-  suggestedSize = parseFloat(suggestedSize.toFixed(2));
-  // Floor: max(0.5, account-level min) — prevents 0.01-lot orders from reaching
-  // Capital.com when no per-symbol market info has been fetched yet. The
-  // /api/market_info handler below refines this with the real symbol min.
-  const acctMin = account.minDealSize || 0;
-  const defaultMin = Math.max(0.5, acctMin);
-  if (suggestedSize < defaultMin) suggestedSize = defaultMin;
-
-  pendingOrder = { setup: s, slDist, suggestedSize, size: suggestedSize, orders: 1, riskActual: slDist * suggestedSize, minDealSize: defaultMin, step: 0.01 };
+  pendingOrder = { setup: s };
 
   const modal = document.getElementById('modal');
   const rows = document.getElementById('modalRows');
@@ -1791,34 +1858,22 @@ function openConfirm(id) {
     return;
   }
   // Disable EXEC until we know the broker min — prevents submitting 0.01 for crude oil.
-  confirmBtn.disabled = true;
+  confirmBtn.disabled = false;
   confirmBtn.className = `btn btn-confirm${s.direction === 'short' ? ' short-btn' : ''}`;
   confirmBtn.textContent = s.direction === 'short' ? '✗ Confirm SELL' : '✓ Confirm BUY';
   rows.innerHTML = `
     <div class="modal-row"><span class="key">Symbol</span><span class="val">${s.symbol}</span></div>
     <div class="modal-row"><span class="key">Direction</span><span class="val ${s.direction}">${s.direction.toUpperCase()}</span></div>
-    <div class="modal-row">
-      <span class="key">Size (lots)</span>
-      <span class="val">
-        <input type="number" id="orderSize" min="0.01" step="0.01" value="${suggestedSize}" style="width:90px;padding:4px 8px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;font-family:var(--font-mono);text-align:right" oninput="recalcRisk()">
-        <span id="minSizeNote" style="color:var(--text3);font-size:10px;margin-left:6px">checking min…</span>
-      </span>
-    </div>
-    <div class="modal-row">
-      <span class="key">Orders</span>
-      <span class="val">
-        <input type="number" id="orderCount" min="1" max="20" step="1" value="1" style="width:60px;padding:4px 8px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;font-family:var(--font-mono);text-align:right" oninput="recalcRisk()">
-        <span style="color:var(--text3);font-size:10px;margin-left:6px">× ${suggestedSize} lots each</span>
-      </span>
-    </div>
+    <div class="modal-row"><span class="key">Size</span><span class="val">Calculated by the server from broker contract data</span></div>
     <div class="modal-row"><span class="key">Entry</span><span class="val">${fmt(s.entry)}</span></div>
     <div class="modal-row"><span class="key">Stop Loss</span><span class="val" style="color:var(--error)">${fmt(s.stopLoss)}</span></div>
     <div class="modal-row"><span class="key">Take Profit</span><span class="val" style="color:var(--long)">${fmt(s.takeProfit)}</span></div>
-    <div class="modal-row"><span class="key" id="riskLabel">Total Risk</span><span class="val risk" id="riskVal">$${Math.round(slDist * suggestedSize)}</span></div>
+    <div class="modal-row"><span class="key">Maximum cash risk</span><span class="val risk">${(account.riskPct * 100).toFixed(2)}% of the connected demo balance</span></div>
     <div class="modal-row"><span class="key">Strategy</span><span class="val">${s.strategy.replace(/_/g, ' ')}</span></div>
-    <div class="modal-row"><span class="key">AI Consensus</span><span class="val" style="color:${s.consensus === 'approve' ? 'var(--long)' : 'var(--neutral)'}">${s.consensus.toUpperCase()} (${s.aiScore}/100)</span></div>
+    <div class="modal-row"><span class="key">AI Consensus</span><span class="val" style="color:${s.consensus === 'approve' ? 'var(--long)' : 'var(--neutral)'}">${s.aiEvaluated ? `${s.consensus.toUpperCase()} (${s.aiScore}/100)` : 'NOT EVALUATED'}</span></div>
   `;
   modal.style.display = 'flex';
+  return;
 
   // Fetch the actual min deal size + step from Capital.com and clamp the input.
   // Without this, Capital.com rejects orders below its min (e.g. CRUDEOIL requires 0.1 lots,
@@ -1921,8 +1976,7 @@ async function autoFix(ev, id) {
 
 async function executeOrder() {
   if (!pendingOrder) return;
-  const { setup: s, size, orders, riskActual } = pendingOrder;
-  const totalSize = size * orders;
+  const { setup: s } = pendingOrder;
   // Defense-in-depth: refuse to send synthetic-data orders to the broker. The
   // openConfirm modal already blocks synth/error setups, but if state has drifted
   // we still don't want a fake-priced market order to hit Capital.com.
@@ -1933,9 +1987,10 @@ async function executeOrder() {
   }
   closeModal();
 
-  // Try real backend; if it fails, simulate
+  // Submit only to the demo-only backend. Failures remain failures.
   let real = false;
   let ticket = null;
+  let actualSize = null;
   let error = null;
   try {
     const resp = await fetch('/api/execute', {
@@ -1944,9 +1999,9 @@ async function executeOrder() {
       body: JSON.stringify({
         epic: s.epic || s.symbol,
         direction: s.direction === 'long' ? 'BUY' : 'SELL',
-        size: totalSize,
         sl: s.stopLoss,
         tp: s.takeProfit,
+        risk_pct: account.riskPct,
       }),
       signal: AbortSignal.timeout(10000),
     });
@@ -1954,6 +2009,7 @@ async function executeOrder() {
     if (resp.ok && data.deal_id) {
       real = true;
       ticket = data.deal_id;
+      actualSize = data.size;
     } else {
       error = data.detail || data.error || `HTTP ${resp.status}`;
     }
@@ -1963,15 +2019,9 @@ async function executeOrder() {
 
   if (real) {
     loadAccount(); // Refresh account bar with new balance + position count
-    const ordersTxt = orders > 1 ? ` (${orders} × ${size})` : '';
-    showToast(`✓ Capital.com order #${ticket} ${s.direction.toUpperCase()} ${totalSize} ${s.epic || s.symbol}${ordersTxt} @ ${fmt(s.entry)} | Risk $${Math.round(riskActual)}`, 'success');
+    showToast(`✓ Capital.com demo order #${ticket} ${s.direction.toUpperCase()} ${actualSize || ''} ${s.epic || s.symbol}`, 'success');
   } else {
-    // Simulated
-    ticket = Math.floor(100000 + Math.random() * 9000000);
-    account.positions += 1;
-    document.getElementById('acctPos').textContent = account.positions;
-    const ordersTxt = orders > 1 ? ` (${orders} × ${size})` : '';
-    showToast(`[SIM] Order #${ticket} ${s.direction.toUpperCase()} ${totalSize} ${s.symbol}${ordersTxt} @ ${fmt(s.entry)} (${error ? 'backend: ' + error.slice(0, 50) : 'offline'})`, 'error');
+    showToast(`Order not submitted: ${error ? error.slice(0, 120) : 'broker unavailable'}`, 'error');
   }
 }
 
@@ -1980,8 +2030,13 @@ function updateRisk(val) {
   account.riskPct = parseFloat(val) / 100;
   document.getElementById('riskVal').textContent = `${val}%`;
   document.getElementById('acctRisk').textContent = `${val}%`;
-  const perTrade = Math.round(account.balance * account.riskPct);
-  document.querySelector('.risk-control span:last-child').textContent = `($${perTrade}/trade on $${account.balance.toLocaleString()})`;
+  const label = document.getElementById('riskPerTradeLabel');
+  if (Number.isFinite(account.balance) && account.balance > 0) {
+    const perTrade = account.balance * account.riskPct;
+    label.textContent = `($${perTrade.toFixed(2)}/trade on $${account.balance.toLocaleString('en-US', { maximumFractionDigits: 2 })} demo balance)`;
+  } else {
+    label.textContent = '(waiting for demo account)';
+  }
 }
 
 function toggleTheme() {
@@ -2010,8 +2065,8 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal()
 async function loadAccount() {
   try {
     const [acctResp, posResp] = await Promise.all([
-      fetch('/api/account', { signal: AbortSignal.timeout(5000) }),
-      fetch('/api/positions', { signal: AbortSignal.timeout(5000) }),
+      fetch('/api/account', { signal: AbortSignal.timeout(15000) }),
+      fetch('/api/positions', { signal: AbortSignal.timeout(15000) }),
     ]);
     if (!acctResp.ok || !posResp.ok) throw new Error(`HTTP ${acctResp.status}/${posResp.status}`);
     const acct = await acctResp.json();
@@ -2021,7 +2076,8 @@ async function loadAccount() {
     account.equity = acct.equity ?? account.equity;
     account.pnl = acct.pnl ?? account.pnl;
     account.positions = (pos.positions || []).length;
-    account.mt5Demo = !!acct.demo;
+    if (!acct.demo) throw new Error('Non-demo broker account rejected');
+    account.mt5Demo = true;
     account.minDealSize = acct.min_deal_size ?? 0;
 
     document.getElementById('acctBalance').textContent = `$${account.balance.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
@@ -2030,25 +2086,29 @@ async function loadAccount() {
     const pnlEl = document.getElementById('acctPnl');
     pnlEl.textContent = (account.pnl >= 0 ? '+' : '') + '$' + account.pnl.toFixed(2);
     pnlEl.style.color = account.pnl >= 0 ? 'var(--long)' : 'var(--short)';
-    document.getElementById('mt5Mode').textContent = account.mt5Demo ? 'DEMO' : 'LIVE';
-    document.getElementById('mt5Mode').style.color = account.mt5Demo ? 'var(--accent)' : 'var(--short)';
+    document.getElementById('mt5Mode').textContent = 'DEMO ONLY';
+    document.getElementById('mt5Mode').style.color = 'var(--accent)';
     document.getElementById('balance').textContent = `$${account.balance.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
     const pillPnl = document.getElementById('pnl');
     pillPnl.textContent = (account.pnl >= 0 ? '+' : '') + '$' + account.pnl.toFixed(2);
     pillPnl.className = 'val ' + (account.pnl >= 0 ? 'pnl-pos' : 'pnl-neg');
+    updateRisk(account.riskPct * 100);
   } catch (err) {
     console.warn('Account load failed (backend offline?):', err.message);
+    account.balance = null;
+    account.equity = null;
+    account.pnl = null;
+    account.positions = null;
+    document.getElementById('acctBalance').textContent = '—';
+    document.getElementById('acctEquity').textContent = '—';
+    document.getElementById('acctPos').textContent = '—';
+    document.getElementById('acctPnl').textContent = '—';
+    document.getElementById('balance').textContent = '—';
+    document.getElementById('pnl').textContent = '—';
   }
 }
 
 // ─── SETTINGS ────────────────────────────────────────────────────────────────
-const SETTINGS_DEFAULTS = {
-  watchlist: 'EURUSD,GBPUSD,AUDUSD,NZDUSD,XAUUSD,USDJPY,BTCUSD,ETHUSD,NVDA,AAPL,TSLA,META',
-  balance: 10000,
-  riskPct: 1.0,
-  riskMax: 3.0,
-};
-
 function _getStored(key) {
   try { return localStorage.getItem('fcc.' + key); } catch (_) { return null; }
 }
@@ -2064,14 +2124,10 @@ function _loadStoredSettings() {
   }
   const bal = parseFloat(_getStored('balance'));
   if (!isNaN(bal) && bal > 0) {
-    account.balance = bal;
-    const balEl = document.getElementById('acctBalance');
-    if (balEl) balEl.textContent = '$' + bal.toLocaleString();
-    const balPill = document.getElementById('balance');
-    if (balPill) balPill.textContent = '$' + bal.toLocaleString('en-US', { maximumFractionDigits: 2 });
+    planningBalance = bal;
   }
   const rPct = parseFloat(_getStored('riskPct'));
-  if (!isNaN(rPct) && rPct > 0) {
+  if (!isNaN(rPct) && rPct > 0 && rPct <= 0.5) {
     account.riskPct = rPct / 100;
     const slider = document.getElementById('riskSlider');
     if (slider) { slider.value = rPct; updateRisk(rPct); }
@@ -2079,7 +2135,7 @@ function _loadStoredSettings() {
   const rMax = parseFloat(_getStored('riskMax'));
   if (!isNaN(rMax) && rMax > 0) {
     const slider = document.getElementById('riskSlider');
-    if (slider) slider.max = rMax;
+    if (slider) slider.max = Math.min(0.5, rMax);
   }
 }
 
@@ -2094,21 +2150,13 @@ async function openSettings() {
   var modal = document.getElementById('settingsModal');
   modal.style.display = 'flex';
   document.getElementById('set_watchlist').value = document.getElementById('watchlist').value;
-  document.getElementById('set_balance').value = account.balance;
+  document.getElementById('set_balance').value = planningBalance;
   document.getElementById('set_risk_pct').value = (account.riskPct * 100).toFixed(2);
   document.getElementById('set_risk_max').value = document.getElementById('riskSlider').max;
-  // Connection tab: fetch server status
+  // Connection tab: fetch broker status
   try {
     var r = await fetch('/api/settings', { signal: AbortSignal.timeout(5000) });
     var s = await r.json();
-    var fmt = function(label, set) {
-      var el = document.getElementById('set_' + label + '_status');
-      if (el) el.innerHTML = set ? '<span class="is-set">&#10003; set</span>' : '<span class="not-set">&#10007; not set</span>';
-    };
-    fmt('capital_api_key', s.capital_api_key_set);
-    fmt('capital_login', s.capital_login_set);
-    fmt('capital_password', s.capital_password_set);
-    fmt('capital_account_id', s.capital_account_id_set);
     document.getElementById('set_capital_environment').value = s.capital_environment || 'demo';
   } catch (err) {
     console.warn('Could not load server settings:', err);
@@ -2145,13 +2193,7 @@ async function saveSettingsTab() {
   activeTab = activeTab.dataset.tab;
 
   if (activeTab === 'connection') {
-    var body = {
-      capital_api_key: document.getElementById('set_capital_api_key').value,
-      capital_login: document.getElementById('set_capital_login').value,
-      capital_password: document.getElementById('set_capital_password').value,
-      capital_account_id: document.getElementById('set_capital_account_id').value,
-      capital_environment: document.getElementById('set_capital_environment').value,
-    };
+    var body = { capital_environment: document.getElementById('set_capital_environment').value };
     try {
       var r = await fetch('/api/settings', {
         method: 'PUT',
@@ -2160,7 +2202,7 @@ async function saveSettingsTab() {
         signal: AbortSignal.timeout(5000),
       });
       if (r.ok) {
-        showToast('Connection settings saved (session-only). Restart server to persist via .env.', 'success');
+        showToast('Environment preference saved.', 'success');
         openSettings(); // re-fetch status
       } else {
         showToast('Save failed: HTTP ' + r.status, 'error');
@@ -2177,9 +2219,10 @@ async function saveSettingsTab() {
     var bal = parseFloat(document.getElementById('set_balance').value);
     var rPct = parseFloat(document.getElementById('set_risk_pct').value);
     var rMax = parseFloat(document.getElementById('set_risk_max').value);
-    if (!isNaN(bal) && bal > 0) { _setStored('balance', String(bal)); account.balance = bal; }
-    if (!isNaN(rPct) && rPct > 0) { _setStored('riskPct', String(rPct)); account.riskPct = rPct / 100; }
-    if (!isNaN(rMax) && rMax > 0) { _setStored('riskMax', String(rMax)); document.getElementById('riskSlider').max = rMax; }
+    if (!isNaN(bal) && bal > 0) { _setStored('balance', String(bal)); planningBalance = bal; }
+    if (!isNaN(rPct) && rPct > 0 && rPct <= 0.5) { _setStored('riskPct', String(rPct)); account.riskPct = rPct / 100; }
+    _setStored('riskMax', '0.5');
+    document.getElementById('riskSlider').max = 0.5;
     showToast('Risk defaults saved.', 'success');
   } else if (activeTab === 'agents') {
     var rows = document.querySelectorAll('.settings-agent-row');
@@ -2223,7 +2266,7 @@ async function reauthenticate() {
       btn.textContent = 'Re-authenticate';
       btn.disabled = false;
       status.innerHTML = '<span class="not-set">&#10007; Failed — check credentials</span>';
-      showToast('Re-auth failed. Open the wizard (delete tools/.env and reload) or re-enter credentials.', 'error');
+      showToast('Re-auth failed. Please log in again.', 'error');
     }
   } catch (err) {
     btn.textContent = 'Re-authenticate';
@@ -2247,8 +2290,8 @@ document.getElementById('settingsModal').addEventListener('click', function(e) {
   if (e.target.classList.contains('modal-overlay')) closeSettings();
 });
 
-// Submit setup on Enter from any setup field
-['setup_api_key', 'setup_login', 'setup_password', 'setup_account_id'].forEach(function(id) {
+// Submit login on Enter from any login field
+['setup_api_key', 'setup_login', 'setup_password'].forEach(function(id) {
   var el = document.getElementById(id);
   if (el) el.addEventListener('keydown', function(e) { if (e.key === 'Enter') submitSetup(); });
 });
@@ -2256,14 +2299,15 @@ document.getElementById('settingsModal').addEventListener('click', function(e) {
 // ─── SETUP WIZARD ────────────────────────────────────────────────────────────
 async function checkSetup() {
   try {
-    const r = await fetch('/api/settings', { signal: AbortSignal.timeout(5000) });
-    const s = await r.json();
-    if (s.needs_setup) {
+    const r = await fetch('/api/session', { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) {
       document.getElementById('setupOverlay').style.display = 'flex';
       document.getElementById('setup_api_key').focus();
+    } else {
+      document.getElementById('setupOverlay').style.display = 'none';
     }
   } catch (err) {
-    console.warn('Could not check setup status:', err);
+    document.getElementById('setupOverlay').style.display = 'flex';
   }
 }
 
@@ -2272,47 +2316,60 @@ async function submitSetup() {
   var errEl = document.getElementById('setupError');
   errEl.style.display = 'none';
   btn.disabled = true;
-  btn.textContent = 'Connecting…';
+  btn.textContent = 'Logging in…';
   var body = {
     capital_api_key: document.getElementById('setup_api_key').value.trim(),
     capital_login: document.getElementById('setup_login').value.trim(),
     capital_password: document.getElementById('setup_password').value,
-    capital_account_id: document.getElementById('setup_account_id').value.trim(),
     capital_environment: document.getElementById('setup_environment').value,
   };
   if (!body.capital_api_key || !body.capital_login || !body.capital_password) {
-    errEl.textContent = 'API key, login, and password are required.';
+    errEl.textContent = 'API key, email, and password are required.';
     errEl.style.display = 'block';
     btn.disabled = false;
     btn.textContent = 'Connect & Start Trading';
     return;
   }
+
   try {
-    var r = await fetch('/api/settings', {
-      method: 'PUT',
+    var r = await fetch('/api/login', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(15000),
     });
     var data = await r.json();
     if (r.ok) {
-      document.getElementById('setupOverlay').style.display = 'none';
-      showToast('Connected to Capital.com. Live data starting now.', 'success');
-      loadAccount();
+      window.location.replace('/');
+      return;
     } else {
-      // Server refused to save — credentials didn't authenticate.
+      // Server refused the login.
       var msg = (data && data.detail) ? data.detail : ('Save failed: HTTP ' + r.status);
       errEl.textContent = msg;
       errEl.style.display = 'block';
       btn.disabled = false;
-      btn.textContent = 'Connect & Start Trading';
+      btn.textContent = 'Login & Continue';
     }
   } catch (err) {
     errEl.textContent = 'Connection failed: ' + err.message;
     errEl.style.display = 'block';
     btn.disabled = false;
-    btn.textContent = 'Connect & Start Trading';
+    btn.textContent = 'Login & Continue';
   }
+}
+
+async function logout() {
+  try {
+    await fetch('/api/logout', { method: 'POST', signal: AbortSignal.timeout(35000) });
+  } catch (err) {
+    console.warn('Logout request failed:', err.message);
+  }
+  document.getElementById('setupOverlay').style.display = 'flex';
+  document.getElementById('setup_api_key').value = '';
+  document.getElementById('setup_login').value = '';
+  document.getElementById('setup_password').value = '';
+  document.getElementById('setupError').style.display = 'none';
+  document.getElementById('setup_api_key').focus();
 }
 
 // ─── EVENT BANNER ────────────────────────────────────────────────────────────
@@ -2383,7 +2440,7 @@ let _prevActiveSignalKey = null;
 
 async function pollCockpit() {
   try {
-    const r = await fetch('/api/cockpit', { signal: AbortSignal.timeout(5000) });
+    const r = await fetch('/api/cockpit', { signal: AbortSignal.timeout(15000) });
     const data = await r.json();
     updateCockpit(data);
   } catch (err) {
@@ -2407,13 +2464,29 @@ function updateCockpit(data) {
     : '—';
   document.getElementById('cockpitMeta').textContent = 'last tick: ' + tickStr;
 
+  // Sync the timeframe selector with the engine's current resolution.
+  const tfSel = document.getElementById('cockpitTf');
+  if (tfSel && cur.resolution && tfSel.value !== cur.resolution) {
+    tfSel.value = cur.resolution;
+  }
+  const autoDemo = cur.demo_auto_trade || {};
+  const autoBtn = document.getElementById('autoDemoToggle');
+  if (autoBtn) {
+    autoBtn.classList.toggle('active', !!autoDemo.enabled);
+    autoBtn.disabled = mode !== 'demo';
+    autoBtn.textContent = autoDemo.enabled ? 'AUTO DEMO ON' : 'AUTO DEMO';
+    autoBtn.title = mode === 'demo'
+      ? 'Demo-only automatic execution'
+      : 'Switch cockpit mode to DEMO before enabling automatic execution';
+  }
+
   // Active signal
   const sig = cur.active_signal;
   const area = document.getElementById('activeSignalArea');
   const emptyEl = document.getElementById('activeSignalEmpty');
   if (!sig) {
     area.innerHTML = '<div class="active-signal empty" id="activeSignalEmpty">' +
-      (mode === 'offline' ? 'engine offline — flip to DEMO or LIVE to start scanning'
+      (mode === 'offline' ? 'engine offline — switch to DEMO to start scanning'
        : 'no qualifying setup — keep watching') +
       '</div>';
   } else {
@@ -2447,6 +2520,7 @@ function updateCockpit(data) {
           <div><div class="lbl">TP</div><div class="v">${_fmtPrice(sig.take_profit)}</div></div>
         </div>
         ${sig.reasoning ? `<div class="reasons"><div class="head">AI Reasoning</div>${sig.reasoning}</div>` : ''}
+        ${renderDemoAutoTradeStatus(sig.demo_auto_trade)}
         <div class="actions">
           <button class="btn-go" onclick="cockpitGo('${sig.symbol}','${dir}','${sig.entry}','${sig.stop_loss}','${sig.take_profit}','${(sig.size_modifier||1)*0.1}')">&#9654; ENTER NOW</button>
           <button class="btn-dismiss" onclick="dismissSignal()">Dismiss</button>
@@ -2535,6 +2609,26 @@ function dismissSignal() {
   fetch('/api/cockpit/ack', { method: 'POST' }).then(() => pollCockpit());
 }
 
+function renderDemoAutoTradeStatus(result) {
+  if (!result) return '';
+  const status = result.status || 'skipped';
+  if (status === 'submitted') {
+    return `<div class="auto-status submitted">AUTO DEMO submitted ${result.direction || ''} ${result.size || ''} ${result.epic || ''}</div>`;
+  }
+  if (status === 'rejected') {
+    return `<div class="auto-status rejected">AUTO DEMO rejected by broker</div>`;
+  }
+  return `<div class="auto-status skipped">AUTO DEMO skipped: ${result.reason || 'not available'}</div>`;
+}
+
+function setDemoAutoTrade(enabled) {
+  fetch('/api/cockpit/demo-auto-trade', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled, risk_pct: 0.005, max_open_positions: 1 }),
+  }).then(r => r.json()).then(() => pollCockpit());
+}
+
 function cockpitGo(symbol, direction, entry, sl, tp, size) {
   // Open execute dialog pre-filled with this signal's data
   const sig = window._pendingSignal = { symbol, direction, entry: parseFloat(entry), stop_loss: parseFloat(sl), take_profit: parseFloat(tp), size: parseFloat(size) };
@@ -2552,21 +2646,36 @@ function startCockpitPolling() {
   document.querySelectorAll('#modeToggle button').forEach(btn => {
     btn.addEventListener('click', () => setMode(btn.dataset.mode));
   });
+  // Wire the cockpit timeframe selector — when changed, push to the engine.
+  const tfSel = document.getElementById('cockpitTf');
+  if (tfSel) {
+    tfSel.addEventListener('change', () => setResolution(tfSel.value));
+  }
+  const autoBtn = document.getElementById('autoDemoToggle');
+  if (autoBtn) {
+    autoBtn.addEventListener('click', () => setDemoAutoTrade(!autoBtn.classList.contains('active')));
+  }
   // Request notification permission
   if (Notification.permission === 'default') {
     Notification.requestPermission();
   }
 }
 
+async function setResolution(resolution) {
+  try {
+    await fetch('/api/cockpit/resolution', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resolution }),
+    });
+  } catch (err) {
+    console.debug('setResolution failed', err);
+  }
+}
+
 // ─── INIT ────────────────────────────────────────────────────────────────────
 _loadStoredSettings();
-document.getElementById('acctBalance').textContent = '$' + account.balance.toLocaleString();
-document.getElementById('acctEquity').textContent = '$' + account.equity.toLocaleString();
-document.getElementById('acctPos').textContent = account.positions;
-document.getElementById('acctPnl').textContent = (account.pnl >= 0 ? '+' : '') + '$' + account.pnl.toFixed(2);
 document.getElementById('acctRisk').textContent = (account.riskPct * 100).toFixed(1) + '%';
-document.getElementById('balance').textContent = '$' + account.balance.toLocaleString('en-US', { maximumFractionDigits: 2 });
-document.getElementById('pnl').textContent = (account.pnl >= 0 ? '+' : '') + '$' + account.pnl.toFixed(2);
 
 checkSetup();
 loadAccount();

@@ -1,6 +1,6 @@
 """Persistent runtime state for the live engine and cockpit UI.
 
-Stores the user's mode (offline / demo / live), the last scan tick, the
+Stores the user's mode (offline / demo), the last scan tick, the
 current active signal, the watch queue, and the recent signals log. Backed
 by a small SQLite DB so a server restart doesn't lose state.
 
@@ -9,13 +9,13 @@ We do NOT use this for trades (those go to the journal DB); this is just
 the cockpit's view-state.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import sqlite3
 import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -27,14 +27,20 @@ _LOCK = threading.Lock()
 # Mode constants
 MODE_OFFLINE = "offline"
 MODE_DEMO = "demo"
-MODE_LIVE = "live"
-_VALID_MODES = {MODE_OFFLINE, MODE_DEMO, MODE_LIVE}
+_VALID_MODES = {MODE_OFFLINE, MODE_DEMO}
+_INDEPENDENT_CURSOR_KEYS = frozenset({"demo_auto_trade"})
 
 
-def _conn() -> sqlite3.Connection:
+@contextmanager
+def _conn() -> Iterator[sqlite3.Connection]:
+    # sqlite3's own context manager only commits; it never closes.
     c = sqlite3.connect(_DB_PATH, check_same_thread=False, timeout=5.0)
     c.row_factory = sqlite3.Row
-    return c
+    try:
+        with c:
+            yield c
+    finally:
+        c.close()
 
 
 def _init_schema() -> None:
@@ -76,6 +82,7 @@ def set_(key: str, value: Any) -> None:
 
 # ─── Mode helpers ──────────────────────────────────────────────────────────────
 
+
 def get_mode() -> str:
     m = get("mode", MODE_OFFLINE)
     return m if m in _VALID_MODES else MODE_OFFLINE
@@ -83,12 +90,15 @@ def get_mode() -> str:
 
 def set_mode(mode: str) -> str:
     if mode not in _VALID_MODES:
-        raise ValueError(f"invalid mode: {mode!r}; expected one of {sorted(_VALID_MODES)}")
+        raise ValueError(
+            f"invalid mode: {mode!r}; expected one of {sorted(_VALID_MODES)}"
+        )
     set_("mode", mode)
     return mode
 
 
 # ─── Recent signals log ───────────────────────────────────────────────────────
+
 
 def append_signal(entry: dict) -> None:
     """Append a signal entry to the recent log. Keeps last 50."""
@@ -104,21 +114,49 @@ def get_recent_signals(n: int = 10) -> list[dict]:
 
 # ─── Live-engine cursor ───────────────────────────────────────────────────────
 
+
 def get_engine_cursor() -> dict:
-    return get("engine_cursor", {
-        "last_tick": 0,
-        "active_signal": None,
-        "watch_queue": [],
-        "watchlist": [],
-    })
+    return get(
+        "engine_cursor",
+        {
+            "last_tick": 0,
+            "active_signal": None,
+            "watch_queue": [],
+            "watchlist": [],
+        },
+    )
 
 
 def set_engine_cursor(cursor: dict) -> None:
-    set_("engine_cursor", cursor)
+    """Merge an engine snapshot without overwriting endpoint-owned fields."""
+    with _LOCK, _conn() as c:
+        row = c.execute(
+            "SELECT value FROM state WHERE key = ?", ("engine_cursor",)
+        ).fetchone()
+        current = json.loads(row["value"]) if row is not None else {}
+        current.update(
+            (key, value)
+            for key, value in cursor.items()
+            if key not in _INDEPENDENT_CURSOR_KEYS
+        )
+        c.execute(
+            "INSERT INTO state(key,value) VALUES(?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("engine_cursor", json.dumps(current, default=str)),
+        )
 
 
 def update_engine(**kwargs: Any) -> dict:
-    cur = get_engine_cursor()
-    cur.update(kwargs)
-    set_engine_cursor(cur)
-    return cur
+    """Atomically update fields owned by API endpoints or UI controls."""
+    with _LOCK, _conn() as c:
+        row = c.execute(
+            "SELECT value FROM state WHERE key = ?", ("engine_cursor",)
+        ).fetchone()
+        current = json.loads(row["value"]) if row is not None else {}
+        current.update(kwargs)
+        c.execute(
+            "INSERT INTO state(key,value) VALUES(?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("engine_cursor", json.dumps(current, default=str)),
+        )
+    return current

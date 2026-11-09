@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Structure Scan · FCC Trader</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui;background:#0c111b;color:#e5ecf7}body{margin:0}header,main{max-width:1200px;margin:auto;padding:24px}header{display:flex;justify-content:space-between;border-bottom:1px solid #263247}a{color:#78bbff}h1{font-size:30px;margin-bottom:8px}p{color:#aab8cd;line-height:1.6}form{display:flex;gap:16px;align-items:end;flex-wrap:wrap;margin:28px 0}label{display:grid;gap:8px;font-size:13px}input,select,button{font:inherit;padding:12px;border:1px solid #35445e;border-radius:8px;background:#151e2e;color:inherit}button{background:#2674dc;cursor:pointer;padding-inline:30px}button:disabled{opacity:.5;cursor:wait}.panel{background:#121b2a;border:1px solid #263247;border-radius:12px;padding:20px;margin:16px 0}#status{font-size:18px;font-weight:600}canvas{width:100%;height:420px;display:block}.metrics{display:flex;gap:28px;flex-wrap:wrap}.metrics p{margin:4px 0}#events{max-height:180px;overflow:auto}small{color:#aab8cd} @media(max-width:600px){header,main{padding:16px}canvas{height:320px}}
+</style></head><body><header><strong>FCC / trader</strong><nav style="display:flex;gap:24px"><a href="/" aria-label="Home apps">▦ Apps</a><a href="/workbench">Workbench</a></nav></header><main>
+<h1>Structure Scan</h1><p>Find a conditional entry using fair value gaps and confirmed market structure.</p>
+<form id="form"><label>Symbol<input id="symbol" placeholder="EURUSD" value="EURUSD" required maxlength="40" pattern="[A-Za-z0-9._-]+"></label><label>Timeframe<select id="tf"><option value="MINUTE">1 minute</option><option value="MINUTE_5">5 minutes</option><option value="MINUTE_15">15 minutes</option><option value="MINUTE_30">30 minutes</option><option value="HOUR" selected>1 hour</option><option value="HOUR_4">4 hours</option><option value="DAY">Daily</option></select></label><button id="run">Run scan</button><button id="allTimeframes" type="button">Scan All Timeframes</button></form>
+<section class="panel"><h2 style="font-size:18px">Opportunity Scanner</h2><p>Select symbols to scan using the timeframe above. Results appear as each scan finishes.</p><div id="watchlistChoices" class="metrics"></div><div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:16px"><label>Add symbol<input id="watchSymbol" maxlength="40" placeholder="e.g. OIL_CRUDE"></label><button type="button" id="addWatch">Add to watchlist</button><button type="button" id="opportunity">Opportunity Scan</button></div></section>
+<section class="panel" id="batchPanel" hidden><h2 style="font-size:18px" id="batchTitle"></h2><p id="batchProgress" aria-live="polite"></p><label style="max-width:260px">Automatic refresh<select id="refreshInterval"><option value="0">Paused</option><option value="60" selected>60 seconds after each batch</option><option value="120">2 minutes after each batch</option><option value="300">5 minutes after each batch</option></select></label><p id="refreshStatus" role="status"></p><div style="overflow-x:auto"><table style="width:100%;text-align:left;border-spacing:12px"><thead><tr><th>Symbol</th><th>Timeframe</th><th>Status</th><th>Direction</th><th>Entry</th><th>Chart</th></tr></thead><tbody id="batchRows"></tbody></table></div><small>Results refresh while this page is open. Each batch runs in selection order. Entry levels can remain unchanged until market structure changes. A waiting candidate is not a confirmed profitable opportunity. Open a chart to review all checks.</small></section>
+<div class="panel" aria-live="polite"><div id="status">Enter a symbol and run a scan.</div><p id="detail">Results use completed broker candles.</p><div id="levels" class="metrics"></div></div>
+<section id="result" hidden><div class="panel"><h2 style="font-size:18px;margin-top:0">Why this setup?</h2><p id="currentCandle" style="font-size:20px;font-weight:700;color:#e5ecf7" aria-live="polite"></p><p id="chartExplanation"></p><div style="overflow-x:auto"><canvas style="min-width:680px" id="chart" aria-label="Candlestick chart with FVG zone and conditional entry line" role="img"></canvas></div><div id="chartKey" class="metrics"></div><div class="panel" id="assessmentPanel" hidden><h3>Entry checks · same scan</h3><strong id="assessmentStatus"></strong><p id="assessmentPrices"></p><ul id="assessmentChecks" style="color:#aab8cd;line-height:1.8"></ul></div><small>Candle numbers start at 1 within this scan. The white line shows the latest completed candle close, not a live quote. Run scan to refresh.<br>Latest 100 completed candles. BOS = direction established or continued; CHoCH = direction changed. Numbered markers identify the latest visible breaks.<br>Green: bullish candle · Red: bearish candle · Blue: FVG · Yellow: entry</small></div><div class="panel"><strong>Structure events</strong><div id="events"></div></div></section>
+<details class="panel"><summary>Scan rules</summary><p>Swings need two completed candles on each side. A close beyond a swing establishes or continues direction (BOS). A break against the previous direction is CHoCH. A three-candle FVG must form on the break candle or within the next two candles. The proposed entry is its midpoint, awaiting a retracement. A later midpoint touch consumes that setup. No matching untouched gap means no entry. Swing levels are close-confirmation thresholds, not entry orders. Analysis is a snapshot; run again for updated levels. No orders are placed.</p></details>
+</main><script src="/module_activity.js"></script><script>
+let data=null;
+const $=id=>document.getElementById(id), fmt=n=>Number(n).toLocaleString(undefined,{maximumSignificantDigits:8});
+function showScan(d){
+data=d;$('levels').replaceChildren();const s=d.setup;$('status').textContent=d.stale?'Market data is stale — entry withheld':s?`${s.direction.toUpperCase()} candidate · wait for ${fmt(s.entry)}`:'No setup — wait for structure and an untouched FVG';$('detail').textContent=`${d.symbol} (${d.epic}) · ${d.timeframe} · Last completed candle: ${new Date(d.as_of*1000).toLocaleString()} · Bias: ${d.bias}.`;
+for(const [label,value] of [['Buy close above',d.buy_break],['Sell close below',d.sell_break],...(!d.stale&&s?[['Entry midpoint',s.entry],['FVG lower',s.lower],['FVG upper',s.upper]]:[])]){const p=document.createElement('p');p.textContent=label+': '+(value==null?'Not available':fmt(value));$('levels').append(p)}
+$('events').replaceChildren();for(const ev of d.events.slice(-12).reverse()){const p=document.createElement('p');p.textContent=`${new Date(d.bars[ev.index].time*1000).toLocaleString()} · ${ev.kind} · ${ev.direction.toUpperCase()} · ${fmt(ev.level)}`;$('events').append(p)}if(!d.events.length)$('events').textContent='No confirmed structure breaks.';$('result').hidden=false;explainChart();draw();
+}
+let scanning=false,refreshTimer=null,countdownTimer=null,lastBatch=null,selectedBatchJob=null;
+function clearRefresh(){clearTimeout(refreshTimer);clearInterval(countdownTimer);refreshTimer=null;countdownTimer=null}
+function scheduleRefresh(){
+  clearRefresh();if(!lastBatch)return;
+  const seconds=Number($('refreshInterval').value);
+  if(!seconds){$('refreshStatus').textContent='Automatic refresh paused. Click a scan button to update.';return}
+  const due=Date.now()+seconds*1000;
+  const update=()=>{$('refreshStatus').textContent=`Next refresh in ${Math.max(0,Math.ceil((due-Date.now())/1000))}s · repeats the last scanned selection`;};
+  update();countdownTimer=setInterval(update,1000);
+  refreshTimer=setTimeout(()=>{const batch=lastBatch;clearRefresh();if(batch&&!scanning)scanBatch(batch.jobs,batch.title,true)},seconds*1000);
+}
+$('refreshInterval').addEventListener('change',()=>{if(!scanning)scheduleRefresh();else $('refreshStatus').textContent=Number($('refreshInterval').value)?'Refresh will resume after this batch.':'Paused after the current batch finishes.'});
+window.addEventListener('pagehide',clearRefresh);
+function setScanning(value){scanning=value;for(const id of ['run','allTimeframes','opportunity','symbol','tf','addWatch','watchSymbol'])$(id).disabled=value;document.querySelectorAll('#watchlistChoices input').forEach(el=>el.disabled=value)}
+async function fetchScan(symbol,timeframe){
+  const r=await fetch('/api/structure?'+new URLSearchParams({symbol,timeframe}),{signal:AbortSignal.timeout(90000)});
+  const d=await r.json();if(!r.ok){const error=new Error(typeof d.detail==='string'?d.detail:'Scan failed. Check symbol and login.');error.status=r.status;throw error}return d;
+}
+$('form').addEventListener('submit',async e=>{e.preventDefault();if(scanning)return;clearRefresh();lastBatch=null;setScanning(true);data=null;$('result').hidden=true;$('batchPanel').hidden=true;$('levels').replaceChildren();$('status').textContent='Scanning completed candles…';$('detail').textContent='';try{showScan(await fetchScan($('symbol').value.trim(),$('tf').value))}catch(err){$('status').textContent=err.message;$('detail').textContent='If login is required, return to the workbench and log in.'}finally{setScanning(false)}});
+const watchSymbols=['XAUUSD','OIL_CRUDE','UKOIL','EURUSD','GBPUSD','USDJPY','BTCUSD','ETHUSD'];
+function addWatchSymbol(symbol,checked=false){
+  if([...$('watchlistChoices').querySelectorAll('input')].some(el=>el.value===symbol))return;
+  const label=document.createElement('label');label.style.cssText='display:flex;align-items:center;gap:6px';
+  const input=document.createElement('input');input.type='checkbox';input.value=symbol;input.checked=checked;label.append(input,document.createTextNode(symbol));$('watchlistChoices').append(label);
+}
+watchSymbols.forEach((symbol,i)=>addWatchSymbol(symbol,i<2));
+$('addWatch').addEventListener('click',()=>{const symbol=$('watchSymbol').value.trim().toUpperCase();if(!/^[A-Z0-9._-]{1,40}$/.test(symbol)){$('watchSymbol').setCustomValidity('Enter one valid symbol');$('watchSymbol').reportValidity();return}$('watchSymbol').setCustomValidity('');addWatchSymbol(symbol,true);$('watchSymbol').value=''});
+$('watchSymbol').addEventListener('input',()=> $('watchSymbol').setCustomValidity(''));
+async function scanBatch(jobs,title,automatic=false){
+  if(scanning)return;
+  clearRefresh();lastBatch=null;if(!automatic)selectedBatchJob=null;
+  $('refreshStatus').textContent='Refreshing results…';
+  $('batchPanel').hidden=false;$('batchTitle').textContent=title;$('batchRows').replaceChildren();
+  if(!jobs.length){$('batchProgress').textContent='Select at least one watchlist symbol.';$('refreshStatus').textContent='No automatic refresh scheduled.';return}
+  lastBatch={jobs:jobs.map(job=>({...job})),title};
+  setScanning(true);data=null;$('result').hidden=true;$('levels').replaceChildren();$('status').textContent='Batch scan in progress';$('detail').textContent='Open a result below to view its chart.';
+  let done=0,failed=0,blocked=false;
+  try{for(const job of jobs){
+    $('batchProgress').textContent=`Scanning ${done+1}/${jobs.length}: ${job.symbol} · ${job.timeframe}`;
+    const row=document.createElement('tr');$('batchRows').append(row);
+    try{
+      const d=await fetchScan(job.symbol,job.timeframe);
+      if(automatic&&selectedBatchJob===job.symbol+'|'+job.timeframe)showScan(d);
+      const state=d.stale?'Stale':d.assessment?.status||(d.setup?'Unverified':'No setup');
+      for(const value of [d.symbol,d.timeframe,state,d.setup?.direction?.toUpperCase()||'—',d.setup?fmt(d.setup.entry):'—']){const cell=document.createElement('td');cell.textContent=value;row.append(cell)}
+      const cell=document.createElement('td'),button=document.createElement('button');button.textContent='Open chart';button.type='button';button.addEventListener('click',()=>{selectedBatchJob=job.symbol+'|'+job.timeframe;showScan(d);$('result').scrollIntoView({behavior:'smooth',block:'start'})});cell.append(button);row.append(cell);
+    }catch(err){failed++;if([401,403,429].includes(err.status))blocked=true;for(const value of [job.symbol,job.timeframe,'Failed: '+err.message,'—','—','—']){const cell=document.createElement('td');cell.textContent=value;row.append(cell)}}
+    done++;if(blocked)break;
+  }}finally{setScanning(false);$('batchProgress').textContent=`Completed ${done}/${jobs.length} scans · ${failed} failed`;if(!data)$('status').textContent='Batch complete — open a result to review its chart.';
+    $('batchProgress').textContent+=` · Last updated ${new Date().toLocaleTimeString()}`;
+    if(blocked||failed===jobs.length){$('refreshInterval').value='0';$('refreshStatus').textContent='Automatic refresh paused: requests failed or access was limited. Resolve the error, then run again.'}else scheduleRefresh();}
+}
+$('opportunity').addEventListener('click',()=>scanBatch([...$('watchlistChoices').querySelectorAll('input:checked')].map(el=>({symbol:el.value,timeframe:$('tf').value})),'Watchlist opportunities'));
+$('allTimeframes').addEventListener('click',()=>{if(!$('symbol').reportValidity())return;scanBatch([...$('tf').options].map(option=>({symbol:$('symbol').value.trim().toUpperCase(),timeframe:option.value})),'All timeframes · '+$('symbol').value.trim().toUpperCase())});
+function explainChart(){
+  const s=data.stale?null:data.setup, last=data.events.at(-1);
+  const candle=data.bars.at(-1);
+  $('currentCandle').textContent=`Latest candle #${data.bars.length} · Close ${fmt(candle.close)}${data.stale?' · STALE':''}`;
+  $('currentCandle').title='Numbered from 1 within this scan. Latest completed candle; not a live quote.';
+  const reason=last?`${last.kind === 'CHoCH' ? 'Direction changed' : 'Direction was established or continued'} when a candle closed ${last.direction==='buy'?'above':'below'} ${fmt(last.level)} (${last.kind}).`:'No confirmed swing break was found.';
+  $('chartExplanation').textContent=data.stale?'These candles are stale. Entry and FVG overlays are withheld; scan again when fresh broker data is available.':s?`${reason} The blue FVG is the gap from ${fmt(s.lower)} to ${fmt(s.upper)}. Wait for price to retrace ${s.direction==='buy'?'down':'up'} to the yellow ${s.direction.toUpperCase()} candidate line at ${fmt(s.entry)} (50% of the gap). This level has not been touched by a later completed candle. Run again to check whether it is still valid.`:`${reason} There is no matching untouched FVG, so no entry line is shown. Watch the swing thresholds for a completed candle close and scan again.`;
+  const assessment=data.assessment;
+  $('assessmentPanel').hidden=!assessment;
+  if(assessment){
+    $('assessmentStatus').textContent='Entry status: '+assessment.status;
+    $('assessmentPrices').textContent=[['Bid',assessment.bid],['Ask',assessment.ask],['Spread',assessment.spread],['Stop reference',assessment.stop],['Target reference',assessment.target],['Adjusted reward/risk',assessment.reward_risk]].map(([k,v])=>k+': '+(v==null?'Unavailable':fmt(v))).join(' · ');
+    $('assessmentChecks').replaceChildren();
+    for(const message of assessment.checks){const item=document.createElement('li');item.textContent=message;$('assessmentChecks').append(item)}
+    if(['Touched','Stale','Unverified','Invalidated'].includes(assessment.status)){
+      $('status').textContent=assessment.status+' — review entry checks before considering this candidate';
+      $('chartExplanation').textContent=assessment.status==='Touched'?'The entry has already been reached in the returned forming candle or quote. The plotted level is a reference, not a fresh waiting entry.':assessment.status==='Invalidated'?'The forming candle crossed the stop reference. Reject this candidate; plotted levels are historical references.':assessment.status==='Unverified'?'Market or quote checks are unavailable. The plotted setup is unverified; review the checks below.':$('chartExplanation').textContent;
+    }
+  }
+  $('chartKey').replaceChildren();
+  const items=[['#48d4a0','Upper swing: close above may confirm an upward break.'],['#f27583','Lower swing: close below may confirm a downward break.']];
+  if(s)items.push(['#78bbff','Blue band: three-candle fair value gap.'],['#ffd36a',`${s.direction.toUpperCase()} entry: midpoint retracement, not a market order.`]);
+  for(const [color,label] of items){const p=document.createElement('p');p.style.color=color;p.textContent=label;$('chartKey').append(p)}
+  $('chart').setAttribute('aria-description',$('chartExplanation').textContent);
+}
+function draw(){
+  if(!data)return;
+  const c=$('chart'),r=c.getBoundingClientRect(),scale=devicePixelRatio||1;
+  c.width=r.width*scale;c.height=r.height*scale;
+  const x=c.getContext('2d');x.scale(scale,scale);
+  const w=r.width,h=r.height,right=w-190,bars=data.bars.slice(-100),offset=data.bars.length-bars.length,s=data.stale?null:data.setup;
+  const levels=[...bars.flatMap(b=>[b.low,b.high]),...[data.buy_break,data.sell_break].filter(v=>v!=null),...(s?[s.lower,s.upper,...[data.assessment?.stop,data.assessment?.target].filter(v=>v!=null)]:[])];
+  let lo=Math.min(...levels),hi=Math.max(...levels);const pad=(hi-lo)*.15||1;lo-=pad;hi+=pad;
+  const y=p=>h-40-(p-lo)/(hi-lo)*(h-80),step=(right-20)/bars.length,xx=i=>12+(i+.5)*step;
+  x.font='11px monospace';
+  for(let i=0;i<5;i++){const p=lo+(hi-lo)*i/4;x.strokeStyle='#263247';x.beginPath();x.moveTo(0,y(p));x.lineTo(right,y(p));x.stroke();x.fillStyle='#8495af';x.fillText(fmt(p),right+8,y(p)+4)}
+  if(s){x.fillStyle='#328aff33';const start=xx(Math.max(0,s.index-offset))-step/2;x.fillRect(start,y(s.upper),right-start,y(s.lower)-y(s.upper))}
+  bars.forEach((b,i)=>{x.strokeStyle=x.fillStyle=b.close>=b.open?'#48d4a0':'#f27583';x.beginPath();x.moveTo(xx(i),y(b.high));x.lineTo(xx(i),y(b.low));x.stroke();x.fillRect(xx(i)-Math.max(1,step*.3),Math.min(y(b.open),y(b.close)),Math.max(2,step*.6),Math.max(1,Math.abs(y(b.open)-y(b.close))))});
+  const labels=[];
+  function line(price,color,label,start=0){if(price==null)return;x.strokeStyle=color;x.setLineDash([5,4]);x.beginPath();x.moveTo(start,y(price));x.lineTo(right,y(price));x.stroke();x.setLineDash([]);labels.push({price,color,label,target:y(price)})}
+  line(bars.at(-1).close,'#e5ecf7',`Last close #${data.bars.length}`,xx(bars.length-1));
+  line(data.buy_break,'#48d4a0','Close above');line(data.sell_break,'#f27583','Close below');
+  if(s){const start=xx(Math.max(0,s.index-offset))-step/2;line(s.upper,'#78bbff','FVG upper',start);line(s.entry,'#ffd36a',s.direction.toUpperCase()+' entry · 50%',start);line(s.lower,'#78bbff','FVG lower',start)}
+  if(s && data.assessment){line(data.assessment.stop,'#e7a2ff','Stop reference');line(data.assessment.target,'#67dbe0','Target reference')}
+  // Keep close price levels readable with spaced labels and leader lines.
+  labels.sort((a,b)=>a.target-b.target);
+  labels.forEach((l,i)=>{l.pos=Math.max(l.target,i?labels[i-1].pos+34:24)});
+  for(let i=labels.length-1;i>=0;i--)labels[i].pos=Math.min(labels[i].pos,i<labels.length-1?labels[i+1].pos-34:h-54);
+  for(const l of labels){x.strokeStyle=l.color;x.beginPath();x.moveTo(right,y(l.price));x.lineTo(right+12,l.pos);x.lineTo(right+20,l.pos);x.stroke();x.fillStyle='#121b2a';x.fillRect(right+20,l.pos-16,168,32);x.fillStyle=l.color;x.fillText(l.label,right+24,l.pos-3);x.fillText(fmt(l.price),right+24,l.pos+11)}
+  const visible=data.events.filter(e=>e.index>=offset).slice(-6);
+  visible.forEach((e,i)=>{const px=xx(e.index-offset),py=y(bars[e.index-offset].close),color=e.direction==='buy'?'#48d4a0':'#f27583',label=`${i+1} ${e.kind} ${e.direction==='buy'?'↑':'↓'}`,lx=Math.max(4,Math.min(px-30,right-96)),ly=8+(i%2)*22;x.strokeStyle=color;x.setLineDash([2,4]);x.beginPath();x.moveTo(px,ly+18);x.lineTo(px,py);x.stroke();x.setLineDash([]);x.fillStyle=color;x.beginPath();x.arc(px,py,4,0,Math.PI*2);x.fill();x.fillStyle='#0c111b';x.fillRect(lx,ly,94,19);x.fillStyle=color;x.fillText(label,lx+4,ly+13)});
+  x.fillStyle='#aab8cd';x.fillText(new Date(bars[0].time*1000).toLocaleString(),12,h-8);
+  const end=new Date(bars.at(-1).time*1000).toLocaleTimeString();x.fillText(end,Math.max(12,right-x.measureText(end).width),h-8);
+}
+window.addEventListener('resize',draw);
+</script></body></html>

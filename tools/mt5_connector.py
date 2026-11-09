@@ -3,19 +3,21 @@
 Falls back to deterministic demo mode when the terminal is not running.
 """
 
-import os
+import importlib
 import logging
+import os
 import random
 import time
 from dataclasses import dataclass
+from types import ModuleType
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 try:
-    import MetaTrader5 as MT5
+    MT5: ModuleType | None = importlib.import_module("MetaTrader5")
 except ImportError:
-    MT5 = None  # type: ignore[assignment]
+    MT5 = None
 
 
 DEMO = False
@@ -293,6 +295,7 @@ def place_order(
 
 # ─── Deterministic synthetic bars ────────────────────────────────────────────
 
+
 def _synth_bars(symbol: str, count: int, timeframe: str) -> list[dict]:
     rng = random.Random(hash(symbol + timeframe) & 0xFFFFFFFF)
     if "USD" in symbol and len(symbol) == 6:
@@ -304,7 +307,9 @@ def _synth_bars(symbol: str, count: int, timeframe: str) -> list[dict]:
     else:
         base, step = 100.0, 0.5
     now = int(time.time())
-    secs = {"M1": 60, "M5": 300, "M15": 900, "H1": 3600, "H4": 14400, "D1": 86400}.get(timeframe, 3600)
+    secs = {"M1": 60, "M5": 300, "M15": 900, "H1": 3600, "H4": 14400, "D1": 86400}.get(
+        timeframe, 3600
+    )
     out: list[dict] = []
     price = base
     for i in range(count):
@@ -313,9 +318,18 @@ def _synth_bars(symbol: str, count: int, timeframe: str) -> list[dict]:
         o = price
         c = max(0.01, o + drift)
         h = max(o, c) + abs(rng.gauss(0, step * 0.5))
-        l = min(o, c) - abs(rng.gauss(0, step * 0.5))
+        low = min(o, c) - abs(rng.gauss(0, step * 0.5))
         v = int(rng.gauss(50_000, 15_000))
-        out.append({"time": t, "open": o, "high": h, "low": l, "close": c, "volume": max(v, 1000)})
+        out.append(
+            {
+                "time": t,
+                "open": o,
+                "high": h,
+                "low": low,
+                "close": c,
+                "volume": max(v, 1000),
+            }
+        )
         price = c
     return out
 
@@ -329,7 +343,9 @@ if __name__ == "__main__":
     sym = get_symbol_info("EURUSD")
     bars = get_ohlcv("EURUSD", "H1", 200)
     size = compute_size("EURUSD", acct.balance, 0.01, 1.0850, 1.0820)
-    print(f"Account: {acct.balance:.2f} {acct.currency} (equity {acct.equity:.2f}, demo={acct.demo})")
+    print(
+        f"Account: {acct.balance:.2f} {acct.currency} (equity {acct.equity:.2f}, demo={acct.demo})"
+    )
     print(f"EURUSD digits={sym.digits} contract={sym.contract_size}")
     print(f"200 H1 bars: first={bars[0]['close']:.5f} last={bars[-1]['close']:.5f}")
     print(f"Size @ 1% risk: {size} lots")

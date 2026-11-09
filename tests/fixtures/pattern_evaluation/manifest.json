@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "label": "synthetic",
+  "source_id": "invented-gold-oil-fixtures-v1",
+  "capture_version": "evaluation-v1",
+  "frozen_at": "2026-09-30T00:00:00+00:00",
+  "development_start": "2026-10-01T08:00:00+00:00",
+  "development_end": "2026-10-01T12:00:00+00:00",
+  "validation_start": null,
+  "validation_end": null,
+  "variants": [
+    "confirmed-90",
+    "unfiltered-90",
+    "confirmed-180",
+    "unfiltered-180"
+  ],
+  "inspected_hashes": [],
+  "sessions": [],
+  "costs": null
+}

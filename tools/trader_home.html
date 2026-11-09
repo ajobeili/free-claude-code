@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FCC Trader · Apps</title>
+<style>
+:root{color-scheme:dark;font-family:Segoe UI,system-ui,sans-serif;color:#f1f4fb;background:#0c111b}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 50% 5%,#272241 0,transparent 65%)}header{padding:24px 36px;border-bottom:1px solid #ffffff12;display:flex;align-items:center;justify-content:space-between}header strong{font-size:19px;letter-spacing:.3px}header span{color:#aeb6c9;font-size:13px}main{max-width:1200px;margin:0 auto;padding:76px 28px}h1{font-size:38px;letter-spacing:-1px;margin:0 0 12px}p{color:#b6bed0;line-height:1.6;margin:0}.apps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin-top:38px}.app{display:flex;flex-direction:column;align-items:flex-start;padding:32px;border:1px solid #354057;border-radius:20px;background:#171e2ed9;color:inherit;text-decoration:none;transition:transform .18s,border-color .18s,background .18s}.app:hover{transform:translateY(-4px);border-color:#a291ed;background:#20283c}.app:focus-visible{outline:3px solid #b9a8ff;outline-offset:5px}.icon{display:grid;place-items:center;width:80px;height:80px;border-radius:20px;margin-bottom:26px;box-shadow:0 10px 26px #0003}.workbench{background:#0c897c}.structure{background:#7552cd}svg{width:44px;height:44px;fill:none;stroke:white;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}h2{font-size:23px;margin:0 0 10px}.app p{min-height:76px}.open{margin-top:26px;font-size:14px;font-weight:600;color:#dfd5ff}.hint{margin-top:30px;font-size:13px;color:#929eb6}@media(max-width:600px){header{padding:20px}main{padding:40px 20px}.apps{grid-template-columns:1fr}h1{font-size:30px}.app{padding:26px}.app p{min-height:0}}@media(prefers-reduced-motion:reduce){.app{transition:none}.app:hover{transform:none}}
+.header-actions{display:flex;align-items:center;gap:20px}#homeLogout{background:#292035;color:#ffe0e5;border:1px solid #b76b80;padding:10px 18px;border-radius:8px;font:600 14px Segoe UI,system-ui;cursor:pointer}#homeLogout:hover{background:#442b42}#homeLogout:focus-visible{outline:3px solid #b9a8ff;outline-offset:3px}#homeLogout:disabled{opacity:.6;cursor:wait}#logoutError{color:#ffb3c3;margin-bottom:20px}@media(max-width:600px){.header-actions>span{display:none}}
+</style>
+</head>
+<body><header><strong>FCC / trader</strong><div class="header-actions"><span>Your trading workspace</span><button id="homeLogout" type="button">Logout</button></div></header>
+<main><p id="logoutError" role="alert" hidden></p><h1>Your apps</h1><p>Choose a workspace to get started.</p>
+<nav class="apps" aria-label="Trading apps">
+<a class="app" href="/workbench" aria-label="Open Trading Workbench"><span class="icon workbench" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="6" y="7" width="36" height="34" rx="4"/><path d="M6 17h36M20 17v24M26 33l5-6 5 3"/></svg></span><h2>Trading Workbench</h2><p>Manage your account, review strategy scans, and follow the trading engine.</p><span class="open">Open workbench →</span></a>
+<a class="app" href="/structure" aria-label="Open Structure Scan"><span class="icon structure" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M11 12v24M24 6v28M37 17v25"/><rect x="7" y="19" width="8" height="10" rx="1"/><rect x="20" y="12" width="8" height="10" rx="1"/><rect x="33" y="25" width="8" height="10" rx="1"/></svg></span><h2>Structure Scan</h2><p>Explore FVG, BOS, and CHoCH setups. Scan watchlists and compare timeframes.</p><span class="open">Open scanner →</span></a>
+<a class="app" href="/planner" aria-label="Open AI Trade Planner"><span class="icon" style="background:#956321" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M10 8h28v32H10zM16 16h16M16 24h10M16 32h16"/></svg></span><h2>AI Trade Planner</h2><p>Let AI choose a conditional plan, track a simulated trade, and review its decisions.</p><span class="open">Open planner →</span></a><a class="app" href="/pattern" aria-label="Open Gold and Oil Trigger Scanner"><h2>Gold and Oil Trigger Scanner</h2><p>New candle-close price events check both markets and update entry cards automatically.</p><span class="open">Open trigger scanner →</span></a></nav><p class="hint">Use the Apps button in either workspace to return here. Broker login is available in Trading Workbench.</p></main><script src="/module_activity.js"></script><script>
+document.getElementById('homeLogout').addEventListener('click',async()=>{
+  const button=document.getElementById('homeLogout'),error=document.getElementById('logoutError');
+  button.disabled=true;button.textContent='Logging out…';error.hidden=true;
+  try{
+    const response=await fetch('/api/logout',{method:'POST',signal:AbortSignal.timeout(35000)});
+    if(!response.ok && response.status!==401)throw new Error('Logout failed. Please try again.');
+    window.location.replace('/workbench');
+  }catch(err){error.textContent='Unable to confirm logout. Check your connection and try again.';error.hidden=false;button.disabled=false;button.textContent='Logout'}
+});
+</script></body></html>
+
