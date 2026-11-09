@@ -35,6 +35,9 @@ wants that sender, so gateway updates stop and restart both against the same
 source. `/etc/sudoers.d/hermes-update` permits the service account only the
 start, stop, restart, and reset-failed systemctl commands for these three Hermes
 units, with and without `--no-ask-password`. Validate that policy with `visudo`.
+Permit both exact spellings of each unit (`hermes-dashboard` and
+`hermes-dashboard.service`, likewise for the gateway and sender); the updater
+uses the shorter names for system-service restart checks.
 
 Build the dashboard with the official workspace lockfile and Node 26 on a
 separate machine when staging memory is limited, then transfer only the compiled
