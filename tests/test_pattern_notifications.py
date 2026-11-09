@@ -200,3 +200,42 @@ def test_hermes_delivery_uses_stdin_and_requires_explicit_success(
     assert (
         asyncio.run(send_via_hermes("hermes", "telegram:test", "test only")) is expected
     )
+
+
+@pytest.mark.parametrize("startup_seconds,expected", [(53, True), (121, False)])
+def test_delivery_accepts_slow_cold_start_but_still_bounds_wait(
+    monkeypatch, startup_seconds, expected
+):
+    """Advance a dedicated loop's clock; no real waiting or Telegram delivery."""
+
+    async def run():
+        loop = asyncio.get_running_loop()
+        original_time = loop.time
+        elapsed = [0.0]
+        loop.time = lambda: original_time() + elapsed[0]
+
+        class Process:
+            returncode = 0
+
+            def kill(self):
+                self.returncode = -9
+
+            async def communicate(self, data=None):
+                if data is not None:
+                    elapsed[0] += startup_seconds
+                    # Run the ready queue and expired timer before completing.
+                    await asyncio.sleep(0)
+                    await asyncio.sleep(0)
+                return b'{"success":true}', b""
+
+        async def spawn(*args, **kwargs):
+            return Process()
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
+        try:
+            result = await send_via_hermes("hermes", "telegram:test", "test only")
+            assert result is expected
+        finally:
+            loop.time = original_time
+
+    asyncio.run(run())

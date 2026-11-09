@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import math
 import subprocess
 import time
@@ -13,6 +14,8 @@ from decimal import Decimal
 from typing import TypedDict
 
 from tools.pattern_trigger import PatternAlert
+
+logger = logging.getLogger(__name__)
 
 
 class AlertPlan(TypedDict):
@@ -113,7 +116,9 @@ async def send_via_hermes(executable: str, target: str, message: str) -> bool:
     except OSError:
         return False
     try:
-        async with asyncio.timeout(45):
+        # Hermes' standalone CLI can take over 50 seconds to initialize on the
+        # small staging host. Keep the wait bounded without killing that cold start.
+        async with asyncio.timeout(90):
             output, _ = await process.communicate(message.encode("utf-8"))
     except (TimeoutError, asyncio.CancelledError) as error:
         with suppress(ProcessLookupError):
@@ -121,18 +126,27 @@ async def send_via_hermes(executable: str, target: str, message: str) -> bool:
         await process.communicate()
         if isinstance(error, asyncio.CancelledError):
             raise
+        logger.warning("Hermes Telegram delivery timed out after 90 seconds")
         return False
     # CLI output can contain private transport details: expose only the verdict.
     try:
         payload = json.loads(output)
     except ValueError, UnicodeError:
+        logger.warning(
+            "Hermes Telegram returned invalid JSON (exit %s)", process.returncode
+        )
         return False
-    return (
+    delivered = (
         process.returncode == 0
         and isinstance(payload, dict)
         and payload.get("success") is True
         and not payload.get("error")
     )
+    if not delivered:
+        logger.warning(
+            "Hermes Telegram did not confirm delivery (exit %s)", process.returncode
+        )
+    return delivered
 
 
 @dataclass(frozen=True)
